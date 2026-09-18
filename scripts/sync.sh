@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# 本地 → 远端单向同步（rsync）。排除 traces/ 与 experiments/*/out/（CLAUDE.md §6）。
+# 远端连接信息放 scripts/remote.env（不入库），格式见 remote.env.example。
+#
+#   bash scripts/sync.sh            # 同步代码
+#   bash scripts/sync.sh --traces   # 额外同步 traces/（重放前需要；单向，远端不会改它）
+#   bash scripts/sync.sh --pull EXP # 反向：拉回 experiments/EXP/out/ 到本地
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+# shellcheck source=env.sh
+source "$HERE/env.sh"
+[[ -f "$HERE/remote.env" ]] || { echo "missing scripts/remote.env (copy remote.env.example)" >&2; exit 1; }
+# shellcheck source=remote.env.example
+source "$HERE/remote.env"
+: "${REMOTE_HOST:?}" "${REMOTE_PORT:?}" "${REMOTE_USER:=root}"
+
+SSH="ssh -p $REMOTE_PORT"
+DEST="$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
+EXCLUDES=(
+  --exclude '.git/' --exclude 'node_modules/' --exclude '.venv/' --exclude '__pycache__/'
+  --exclude '.mypy_cache/' --exclude '.ruff_cache/' --exclude '.pytest_cache/'
+  --exclude 'traces/' --exclude 'experiments/*/out/' --exclude 'scripts/remote.env' --exclude '.DS_Store'
+)
+
+case "${1:-}" in
+  --pull)
+    EXP="${2:?usage: sync.sh --pull EXP}"
+    mkdir -p "$ROOT/experiments/$EXP/out"
+    rsync -az --info=progress2 -e "$SSH" "$DEST/experiments/$EXP/out/" "$ROOT/experiments/$EXP/out/"
+    ;;
+  --traces)
+    rsync -az --info=progress2 -e "$SSH" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
+    rsync -az --info=progress2 -e "$SSH" "$ROOT/traces/" "$DEST/traces/"
+    ;;
+  "")
+    $SSH "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
+    rsync -az --info=progress2 -e "$SSH" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
+    ;;
+  *) echo "unknown option: $1" >&2; exit 2 ;;
+esac

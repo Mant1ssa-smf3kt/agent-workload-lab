@@ -1,0 +1,29 @@
+{
+  "_comment": "把这段合并进 ~/.pi/agent/models.json，让本地 pi 直连远端 SGLang（先 ssh -N -L 30000:127.0.0.1:30000 -p <PORT> root@<HOST>）。只用于调通链路与 W3 的 harness 侧实验；录制阶段不要用它。",
+  "providers": {
+    "sglang": {
+      "baseUrl": "http://127.0.0.1:30000/v1",
+      "api": "openai-completions",
+      "apiKey": "sglang",
+      "compat": {
+        "supportsStore": false,
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "maxTokensField": "max_tokens",
+        "thinkingFormat": "chat-template",
+        "chatTemplateKwargs": { "enable_thinking": { "$var": "thinking.enabled" } }
+      },
+      "models": [
+        {
+          "id": "Qwen/Qwen3-8B-FP8",
+          "name": "Qwen3-8B-FP8 (SGLang)",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 65536,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}

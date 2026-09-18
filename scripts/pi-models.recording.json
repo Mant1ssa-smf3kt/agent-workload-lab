@@ -1,0 +1,10 @@
+{
+  "_comment": "合并进 ~/.pi/agent/models.json。录制时让 pi 相信的上下文窗口 = 重放侧 SGLang 的 --context-length（scripts/serve.sh 默认 65536），否则 1M 窗口的云端模型永远不会 compaction，轨迹也会长到塞不进重放服务。maxTokens 同理对齐 sglang provider。",
+  "providers": {
+    "zai": {
+      "modelOverrides": {
+        "glm-5.3": { "contextWindow": 65536, "maxTokens": 8192 }
+      }
+    }
+  }
+}

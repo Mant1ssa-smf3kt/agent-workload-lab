@@ -22,3 +22,31 @@
 **为什么**：payload 是 serving 侧的 ground truth，必须完整；`context` 与 payload 内容重复，只保留足以在相邻两轮之间定位「哪条消息被改写」的摘要。磁盘换简单性——traces 不入库。
 
 **影响**：任何破坏性改动需升 schema 版本并在此追加记录；旧 trace 不迁移，标注 schema 版本后隔离。
+
+## 2026-09-18 · 重放模型与服务版本锁
+
+**决定**：`scripts/env.sh` 锁定 `sglang==0.5.20`、`modelscope==1.40.1`、重放模型 `Qwen/Qwen3-8B-FP8`（ModelScope），tool-call parser `qwen25`、reasoning parser `qwen3`。GPU 目标：AutoDL 单卡 RTX 4090 (24GB)，5090 (32GB) 备选。
+
+**为什么**：
+- 单卡 24GB 上 bf16 8B 只剩 ~6GB 给 KV cache（≈40k token），装不下多条并发的长 agent 上下文，radix cache 实验无从谈起；FP8 权重 ~8GB，KV 可达 ~14GB。
+- Qwen3 在 SGLang 里工具调用与 reasoning parser 都是一等支持，减少链路调试。
+- 0.5.20 是写下这条时 PyPI 上的最新版；选最新是为了 5090 的 Blackwell 支持。
+
+**影响**：改任何一项 = 换实验环境，已有基线作废，跨版本数字不得同表（CLAUDE.md §8.3）。`scripts/fingerprint.sh` 把这些值写进每次 serve 的指纹。
+
+## 2026-09-18 · 录制第一批 thinking 关闭
+
+**决定**：录制用 `zai/glm-5.3:off`（或同 provider 其他模型，同样 `:off`）。
+
+**为什么**：zai 的 thinking 开启时以 `clear_thinking: false` 发送，`reasoning_content` 会写回后续轮的 assistant 历史消息，使 prompt 形状偏离小模型重放时的形状。先拿干净的基线。
+
+**影响**：需要 reasoning 对上下文增长影响的结论时，另录一批、在 config 里标注，不与第一批混表。
+
+## 2026-09-18 · 录制模型的 contextWindow 覆盖为重放侧的 context-length
+
+**决定**：录制时通过 `~/.pi/agent/models.json` 的 `modelOverrides` 把云端模型的 `contextWindow` 设为 65536（= `scripts/serve.sh` 的 `CONTEXT_LENGTH` 默认值），`maxTokens` 设为 8192（`scripts/pi-models.recording.json`）。
+
+**为什么**：pi 在 `contextTokens > contextWindow − reserveTokens(16384)` 时 compaction。glm-5.3 窗口 1M，不覆盖则永远不 compaction，轨迹长度也不受重放服务上下文上限约束。compaction 是本项目要观察的主要缓存失效来源之一，录制侧必须能自然触发。
+
+**影响**：`CONTEXT_LENGTH` 与这里的覆盖值必须同步改；trace header 的 `model.context_window` 字段应等于 65536，`analysis/` 可据此校验。
+

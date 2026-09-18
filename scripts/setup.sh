@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# 远端环境装配。幂等；无卡模式即可运行（不需要 GPU）。
+#
+#   bash scripts/setup.sh            # 全部：serve venv + 项目 venv + 模型权重
+#   bash scripts/setup.sh --no-model # 跳过权重下载
+#
+# 不要在开卡状态下跑这个脚本（下载大文件按小时计费）。
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=env.sh
+source "$HERE/env.sh"
+
+WANT_MODEL=1
+[[ "${1:-}" == "--no-model" ]] && WANT_MODEL=0
+
+log() { printf '{"ts":"%s","step":"%s","msg":"%s"}\n' "$(date -Is)" "$1" "$2" >&2; }
+
+# ── 1. SGLang 服务 venv ───────────────────────────────────────────────────
+log serve-venv "python: $(python3 --version 2>&1)"
+if [[ ! -x "$SERVE_VENV/bin/python" ]]; then
+  python3 -m venv "$SERVE_VENV"
+fi
+"$SERVE_VENV/bin/pip" install -q -i "$PIP_INDEX_URL" --upgrade pip
+if ! "$SERVE_VENV/bin/python" -c "import sglang, sys; sys.exit(0 if sglang.__version__ == '$SGLANG_VERSION' else 1)" 2>/dev/null; then
+  log serve-venv "installing sglang[all]==$SGLANG_VERSION"
+  "$SERVE_VENV/bin/pip" install -i "$PIP_INDEX_URL" "sglang[all]==$SGLANG_VERSION"
+fi
+"$SERVE_VENV/bin/pip" install -q -i "$PIP_INDEX_URL" "modelscope==$MODELSCOPE_VERSION"
+log serve-venv "sglang $("$SERVE_VENV/bin/python" -c 'import sglang; print(sglang.__version__)')"
+
+# ── 2. 项目 venv（replay / metrics / analysis） ───────────────────────────
+if ! command -v uv >/dev/null 2>&1; then
+  log project-venv "installing uv"
+  pip install -q -i "$PIP_INDEX_URL" uv
+fi
+( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" uv sync --group dev )
+log project-venv "ok"
+
+# ── 3. 模型权重（ModelScope） ─────────────────────────────────────────────
+if [[ "$WANT_MODEL" == 1 ]]; then
+  mkdir -p "$MODELS_DIR"
+  if [[ -f "$MODEL_DIR/config.json" ]]; then
+    log model "present: $MODEL_DIR"
+  else
+    log model "downloading $MODEL_ID → $MODEL_DIR"
+    "$SERVE_VENV/bin/modelscope" download --model "$MODEL_ID" --local_dir "$MODEL_DIR"
+  fi
+  sha256sum "$MODEL_DIR/config.json" | awk '{print $1}' > "$MODEL_DIR/.config.sha256"
+fi
+
+mkdir -p "$FINGERPRINT_DIR"
+log done "serve venv: $SERVE_VENV · model: $MODEL_DIR"
