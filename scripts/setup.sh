@@ -57,26 +57,39 @@ if [[ -x "$SERVE_VENV/bin/python" ]]; then
     rm -rf "$SERVE_VENV"
   fi
 fi
-if [[ ! -x "$SERVE_VENV/bin/python" ]]; then
+if [[ ! -x "$SERVE_VENV/bin/python3.$( "$PROJECT_PY" -c 'import sys; print(sys.version_info[1])')" && ! -x "$SERVE_VENV/bin/python" ]]; then
   "$PROJECT_PY" -m venv "$SERVE_VENV"
 fi
-"$SERVE_VENV/bin/pip" install -q -i "$PIP_INDEX_URL" --upgrade pip
-if ! "$SERVE_VENV/bin/python" -c "import sglang, sys; sys.exit(0 if sglang.__version__ == '$SGLANG_VERSION' else 1)" 2>/dev/null; then
-  log serve-venv "installing sglang[all]==$SGLANG_VERSION"
-  "$SERVE_VENV/bin/pip" install -i "$PIP_INDEX_URL" "sglang[all]==$SGLANG_VERSION"
+# venv 里保证 bin/python 存在（并发/中断过的 venv 可能只剩 python3.X）
+if [[ ! -x "$SERVE_VENV/bin/python" ]]; then
+  PYX="$(ls "$SERVE_VENV"/bin/python3.* 2>/dev/null | head -1)"
+  [[ -n "$PYX" ]] && ln -sf "$(basename "$PYX")" "$SERVE_VENV/bin/python"
+  [[ -x "$SERVE_VENV/bin/python3" ]] || ln -sf "$(basename "$PYX")" "$SERVE_VENV/bin/python3"
 fi
-"$SERVE_VENV/bin/pip" install -q -i "$PIP_INDEX_URL" "modelscope==$MODELSCOPE_VERSION"
-log serve-venv "sglang $("$SERVE_VENV/bin/python" -c 'import sglang; print(sglang.__version__)')"
+SV_PY="$SERVE_VENV/bin/python"
+"$SV_PY" -m pip install -q -i "$PIP_INDEX_URL" --upgrade pip
+have_sglang() { "$SV_PY" -c "import importlib.metadata as m, sys; sys.exit(0 if m.version('sglang') == '$SGLANG_VERSION' else 1)" 2>/dev/null; }
+if ! have_sglang; then
+  log serve-venv "installing sglang[all]==$SGLANG_VERSION"
+  "$SV_PY" -m pip install -i "$PIP_INDEX_URL" "sglang[all]==$SGLANG_VERSION"
+fi
+"$SV_PY" -m pip install -q -i "$PIP_INDEX_URL" "modelscope==$MODELSCOPE_VERSION"
+log serve-venv "sglang $("$SV_PY" -c 'import importlib.metadata as m; print(m.version("sglang"))') torch $("$SV_PY" -c 'import importlib.metadata as m; print(m.version("torch"))')"
 
 # ── 2. 项目 venv（replay / metrics / analysis） ───────────────────────────
-if ! command -v uv >/dev/null 2>&1; then
-  log project-venv "installing uv"
-  "$PROJECT_PY" -m pip install -q -i "$PIP_INDEX_URL" uv
-  hash -r
+# uv 装在解释器同目录（非交互 ssh 的 PATH 可能不含它），用绝对路径调用
+UV="$(command -v uv 2>/dev/null || true)"
+if [[ -z "$UV" ]]; then
+  UV="$(dirname "$PROJECT_PY")/uv"
+  if [[ ! -x "$UV" ]]; then
+    log project-venv "installing uv"
+    "$PROJECT_PY" -m pip install -q -i "$PIP_INDEX_URL" uv
+  fi
 fi
+[[ -x "$UV" ]] || { log project-venv "uv not found after install"; exit 1; }
 # 用机器上已有的 3.11+ 解释器，避免 uv 去 GitHub 下 python（国内网络）。
-( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" UV_PYTHON_DOWNLOADS=never uv sync --group dev --python "$PROJECT_PY" )
-log project-venv "ok ($PROJECT_PY)"
+( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" UV_PYTHON_DOWNLOADS=never "$UV" sync --group dev --python "$PROJECT_PY" )
+log project-venv "ok ($PROJECT_PY, uv=$UV)"
 
 # ── 3. 模型权重（ModelScope） ─────────────────────────────────────────────
 if [[ "$WANT_MODEL" == 1 ]]; then
@@ -85,7 +98,8 @@ if [[ "$WANT_MODEL" == 1 ]]; then
     log model "present: $MODEL_DIR"
   else
     log model "downloading $MODEL_ID → $MODEL_DIR"
-    "$SERVE_VENV/bin/modelscope" download --model "$MODEL_ID" --local_dir "$MODEL_DIR"
+    "$SV_PY" -m modelscope.cli.cli download --model "$MODEL_ID" --local_dir "$MODEL_DIR" 2>/dev/null \
+      || "$SERVE_VENV/bin/modelscope" download --model "$MODEL_ID" --local_dir "$MODEL_DIR"
   fi
   sha256sum "$MODEL_DIR/config.json" | awk '{print $1}' > "$MODEL_DIR/.config.sha256"
 fi
