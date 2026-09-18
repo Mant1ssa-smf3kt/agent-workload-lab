@@ -33,8 +33,14 @@ if ! command -v uv >/dev/null 2>&1; then
   log project-venv "installing uv"
   pip install -q -i "$PIP_INDEX_URL" uv
 fi
-( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" uv sync --group dev )
-log project-venv "ok"
+# 用机器上已有的 3.11+ 解释器，避免 uv 去 GitHub 下 python（国内网络）。
+PROJECT_PY=""
+for cand in python3.12 python3.11 python3.13; do
+  if command -v "$cand" >/dev/null 2>&1; then PROJECT_PY="$(command -v "$cand")"; break; fi
+done
+[[ -n "$PROJECT_PY" ]] || { log project-venv "no python3.11+ on PATH; install one (conda create -n py312 python=3.12)"; exit 1; }
+( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" UV_PYTHON_DOWNLOADS=never uv sync --group dev --python "$PROJECT_PY" )
+log project-venv "ok ($PROJECT_PY)"
 
 # ── 3. 模型权重（ModelScope） ─────────────────────────────────────────────
 if [[ "$WANT_MODEL" == 1 ]]; then
