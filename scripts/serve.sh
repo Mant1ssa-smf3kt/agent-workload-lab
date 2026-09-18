@@ -19,6 +19,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/env.sh"
 
 CONTEXT_LENGTH="${CONTEXT_LENGTH:-65536}"
+# Qwen3-8B 原生 max_position_embeddings=40960（config.json）。超过它必须用 YaRN（Qwen3 官方做法）：
+# rope_scaling = {yarn, factor, original_max_position_embeddings=32768}，派生上下文 = 32768 × factor。
+# CONTEXT_LENGTH=65536 → factor 2.0；131072 → 4.0。YaRN 只影响输出质量，不影响 token 序列与时序（CLAUDE.md §4）。
+YARN_ORIGINAL="${YARN_ORIGINAL:-32768}"
+YARN_FACTOR="${YARN_FACTOR:-$(awk "BEGIN{printf \"%.1f\", $CONTEXT_LENGTH / $YARN_ORIGINAL}")}"
 MEM_FRACTION="${MEM_FRACTION:-0.85}"
 CHUNKED_PREFILL="${CHUNKED_PREFILL:-8192}"
 SCHEDULE_POLICY="${SCHEDULE_POLICY:-lpm}"
@@ -40,6 +45,7 @@ ARGS=(
   --schedule-policy "$SCHEDULE_POLICY"
   --tool-call-parser "$TOOL_CALL_PARSER"
   --reasoning-parser "$REASONING_PARSER"
+  --json-model-override-args "{\"rope_scaling\":{\"rope_type\":\"yarn\",\"factor\":$YARN_FACTOR,\"original_max_position_embeddings\":$YARN_ORIGINAL}}"
   --enable-metrics                       # Prometheus /metrics：cache hit、队列、batch 组成
   --enable-cache-report                  # usage.prompt_tokens_details.cached_tokens；不加则 §5 命中率全为 null
   --log-requests-level 0
