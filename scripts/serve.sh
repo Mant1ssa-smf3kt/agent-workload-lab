@@ -24,6 +24,10 @@ CHUNKED_PREFILL="${CHUNKED_PREFILL:-8192}"
 SCHEDULE_POLICY="${SCHEDULE_POLICY:-lpm}"
 
 [[ -f "$MODEL_DIR/config.json" ]] || { echo "model not found: $MODEL_DIR (run scripts/setup.sh)" >&2; exit 1; }
+DRV="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | cut -d. -f1 || true)"
+if [[ -n "$DRV" && "$DRV" -lt "$SGLANG_MIN_DRIVER" ]]; then
+  echo "host driver $DRV < $SGLANG_MIN_DRIVER required by sglang $SGLANG_VERSION (see docs/remote.md)" >&2; exit 1
+fi
 [[ -x "$SERVE_VENV/bin/python" ]] || { echo "serve venv missing: $SERVE_VENV (run scripts/setup.sh)" >&2; exit 1; }
 
 ARGS=(

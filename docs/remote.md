@@ -8,7 +8,19 @@
 cp scripts/remote.env.example scripts/remote.env   # 填 AutoDL 控制台的 SSH host / port
 ```
 
-租实例时选 **RTX 4090 (24GB)**，镜像带 CUDA 12.x + Python 3.12（或 3.11）即可；先用**无卡模式**开机。
+租实例时选 **RTX 4090 (24GB)**，先用**无卡模式**开机。镜像只要有 Python 3.11/3.12；镜像自带的 torch / CUDA toolkit 无所谓，
+sglang 的配套 torch 会装进独立的 `venv-serve`。
+
+**真正的硬约束是宿主机 NVIDIA 驱动**（容器里改不了；4090/5090 是消费卡，没有 forward-compat）：
+
+| sglang | torch | CUDA 栈 | 宿主机驱动 |
+|---|---|---|---|
+| 0.5.20（默认锁定） | 2.13.0 | CUDA 13 | **≥ 580** |
+| 0.5.10（cu12 最后一版） | 2.9.1 | CUDA 12.8 | ≥ 525（4090）/ ≥ 570（5090） |
+
+租之前看 AutoDL 列表的「最高 CUDA 版本」：13.x 才能用默认锁；只有 12.x 的机器用
+`SGLANG_VERSION=0.5.10 SGLANG_MIN_DRIVER=525 bash scripts/setup.sh`，并改 `scripts/env.sh` 默认值 + `docs/decisions.md` 记一笔。
+`setup.sh` / `serve.sh` 都会先查 `nvidia-smi` 的驱动版本，不满足直接退出。
 
 ## 1. 无卡模式：装环境、拉权重、dry-run
 

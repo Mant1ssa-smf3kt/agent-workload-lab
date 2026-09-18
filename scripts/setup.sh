@@ -15,6 +15,18 @@ WANT_MODEL=1
 
 log() { printf '{"ts":"%s","step":"%s","msg":"%s"}\n' "$(date -Is)" "$1" "$2" >&2; }
 
+# ── 0. 驱动检查（无卡模式下 nvidia-smi 可能不存在，跳过；有卡时不满足直接退出） ──
+if command -v nvidia-smi >/dev/null 2>&1; then
+  DRV="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | cut -d. -f1 || true)"
+  if [[ -n "$DRV" && "$DRV" -lt "$SGLANG_MIN_DRIVER" ]]; then
+    log driver "host driver $DRV < $SGLANG_MIN_DRIVER required by sglang $SGLANG_VERSION; use SGLANG_VERSION=0.5.10 SGLANG_MIN_DRIVER=525"
+    exit 1
+  fi
+  log driver "host driver ${DRV:-unknown} (need >= $SGLANG_MIN_DRIVER for sglang $SGLANG_VERSION)"
+else
+  log driver "nvidia-smi absent (no-GPU mode); driver check deferred to serve.sh"
+fi
+
 # ── 1. SGLang 服务 venv ───────────────────────────────────────────────────
 log serve-venv "python: $(python3 --version 2>&1)"
 if [[ ! -x "$SERVE_VENV/bin/python" ]]; then

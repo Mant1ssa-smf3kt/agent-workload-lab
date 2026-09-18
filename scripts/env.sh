@@ -3,7 +3,10 @@
 # 改任何一项都等于换实验环境：必须在 docs/decisions.md 记录，已有基线作废（CLAUDE.md §8.3）。
 
 # ── 版本锁 ────────────────────────────────────────────────────────────────
+# sglang ≥ 0.5.12 是 CUDA 13 栈（torch 2.11/2.13 cu13 + flashinfer[cu13]），宿主机驱动必须 ≥ 580；
+# 4090/5090 是消费卡，没有 forward-compat。驱动只到 CUDA 12.x 的机器用 0.5.10（torch 2.9.1 cu128，最后一个 cu12 版）。
 export SGLANG_VERSION="${SGLANG_VERSION:-0.5.20}"        # PyPI，2026-09-18 时为最新
+export SGLANG_MIN_DRIVER="${SGLANG_MIN_DRIVER:-580}"      # 与上面的版本配套；换 0.5.10 时改成 525
 export MODELSCOPE_VERSION="${MODELSCOPE_VERSION:-1.40.1}"
 
 # ── 重放模型 ─────────────────────────────────────────────────────────────
