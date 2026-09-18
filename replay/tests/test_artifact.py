@@ -129,7 +129,15 @@ def test_plan_fingerprint_and_writer(tmp_path: Path) -> None:
     assert fp["gpu"] == {"name": "RTX 4090"} and fp["sglang_version"] == "0.5.20"
     assert fp["pi_versions"] == ["0.85.1"] and fp["traces"][0]["dropped_keys"] == ["thinking"]
     assert len(fp["traces"][0]["sha256"]) == 64 and len(fp["config_sha256"]) == 64
-    assert fp["replayer"]["commit"] is None  # tmp_path is not a git repo
+    assert fp["replayer"]["commit"] is None and fp["replayer"]["source"] is None  # no git, no marker
+    (tmp_path / ".sync-commit").write_text("commit=abc123\ndirty=true\nsynced_at=2026-09-18T00:00:00Z\n")
+    rp = build_fingerprint(cfg, tmp_path / "config.yaml", None, [t], tmp_path)["replayer"]
+    assert (rp["commit"], rp["dirty"], rp["source"], rp["synced_at"]) == (
+        "abc123",
+        True,
+        "sync-commit",
+        "2026-09-18T00:00:00Z",
+    )
 
     w = ArtifactWriter(tmp_path / "out")
     w.write_config(cfg)

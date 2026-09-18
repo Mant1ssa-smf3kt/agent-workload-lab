@@ -54,7 +54,20 @@ def git_info(cwd: Path) -> dict[str, Any]:
 
     head = run("rev-parse", "HEAD")
     status = run("status", "--porcelain")
-    return {"commit": head, "dirty": None if status is None else bool(status)}
+    if head is not None:
+        return {"commit": head, "dirty": bool(status), "source": "git"}
+    # Remote checkouts are rsynced without .git; scripts/sync.sh leaves .sync-commit behind.
+    marker = cwd / ".sync-commit"
+    if marker.exists():
+        kv = dict(line.split("=", 1) for line in marker.read_text().splitlines() if "=" in line)
+        commit = kv.get("commit")
+        return {
+            "commit": None if commit in (None, "unknown") else commit,
+            "dirty": kv.get("dirty") == "true",
+            "source": "sync-commit",
+            "synced_at": kv.get("synced_at"),
+        }
+    return {"commit": None, "dirty": None, "source": None}
 
 
 def build_fingerprint(

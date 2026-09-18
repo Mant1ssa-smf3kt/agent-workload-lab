@@ -25,6 +25,10 @@ FP_PYTHON="$("$PY" -c 'import sys; print(sys.version.split()[0])')"
 FP_MODEL_SHA="$(cat "$MODEL_DIR/.config.sha256" 2>/dev/null || (sha256sum "$MODEL_DIR/config.json" 2>/dev/null | awk '{print $1}') || true)"
 FP_COMMIT="$(git -C "$HERE/.." rev-parse HEAD 2>/dev/null || true)"
 FP_DIRTY="$(if git -C "$HERE/.." status --porcelain 2>/dev/null | grep -q .; then echo 1; else echo 0; fi)"
+if [[ -z "$FP_COMMIT" && -f "$HERE/../.sync-commit" ]]; then   # 远端无 .git：读 sync.sh 留下的标记
+  FP_COMMIT="$(sed -n 's/^commit=//p' "$HERE/../.sync-commit")"; [[ "$FP_COMMIT" == unknown ]] && FP_COMMIT=""
+  FP_DIRTY="$(grep -q '^dirty=true' "$HERE/../.sync-commit" && echo 1 || echo 0)"
+fi
 export FP_GPU_CSV FP_CUDA FP_SGLANG FP_TORCH FP_PYTHON FP_MODEL_SHA FP_COMMIT FP_DIRTY
 export MODEL_ID MODEL_DIR MODEL_QUANT
 
