@@ -108,18 +108,23 @@ class Sampler:
         self._task = None
 
 
-# Metrics worth pulling out of a snapshot for the summary (names as of sglang 0.5.x;
-# missing ones are reported as null rather than guessed).
+# Metrics worth pulling out of a snapshot for the summary. Names verified against
+# sglang 0.5.20 srt/observability/metrics_collector.py; missing ones are reported as null.
 KEY_METRICS = (
     "sglang:cache_hit_rate",
-    "sglang:num_running_reqs",
-    "sglang:num_queue_reqs",
-    "sglang:num_used_tokens",
-    "sglang:token_usage",
-    "sglang:gen_throughput",
+    "sglang:cached_tokens_total",
     "sglang:prompt_tokens_total",
     "sglang:generation_tokens_total",
     "sglang:num_requests_total",
+    "sglang:num_running_reqs",
+    "sglang:num_queue_reqs",
+    "sglang:num_retracted_reqs",
+    "sglang:num_used_tokens",
+    "sglang:kv_used_tokens",
+    "sglang:kv_evictable_tokens",
+    "sglang:evicted_tokens_total",
+    "sglang:token_usage",
+    "sglang:gen_throughput",
 )
 
 

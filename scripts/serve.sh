@@ -41,6 +41,7 @@ ARGS=(
   --tool-call-parser "$TOOL_CALL_PARSER"
   --reasoning-parser "$REASONING_PARSER"
   --enable-metrics                       # Prometheus /metrics：cache hit、队列、batch 组成
+  --enable-cache-report                  # usage.prompt_tokens_details.cached_tokens；不加则 §5 命中率全为 null
   --log-requests-level 0
   --random-seed 0
 )

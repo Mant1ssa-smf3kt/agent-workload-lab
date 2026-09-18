@@ -64,3 +64,11 @@
 
 **影响**：改任何一条都是换保真口径，跨口径数字不得同表。summary 里 `cache_hit_rate = Σcached_tokens / Σprompt_tokens`（§5，按请求聚合），`cache_hit_per_request` 只是辅助分布。
 
+
+## 2026-09-18 · serve.sh 加 `--enable-cache-report`
+
+**决定**：SGLang 启动参数加 `--enable-cache-report`。
+
+**为什么**：读 0.5.20 源码（`srt/entrypoints/openai/protocol.py` `UsageInfo`）：`prompt_tokens_details.cached_tokens` 只在该开关打开时返回。不开则 replayer 拿不到每请求的命中 token 数，§5 的 `cache_hit_rate` 无法按请求聚合，只能退化成 `/metrics` 的全局 `sglang:cache_hit_rate`。
+
+**影响**：无性能副作用已知；它进入指纹的 `serve_args`。`ignore_eos`、`chat_template_kwargs` 亦已在同一文件确认为 `ChatCompletionRequest` 合法字段。
