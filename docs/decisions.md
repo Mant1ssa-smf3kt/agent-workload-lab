@@ -80,3 +80,12 @@
 **为什么**：Qwen3-8B `config.json` 的 `max_position_embeddings=40960`，SGLang 0.5.20 拒绝 `--context-length 65536`（可用 `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1` 硬闯，但无 RoPE 扩展）。录制侧 contextWindow 已定为 65536，且 reactive-resume 轨迹的 prompt 最高 ~49k token，40960 装不下。YaRN 是 Qwen3 官方的长上下文方式。
 
 **影响**：YaRN 改变的是模型输出质量，不改变 prompt token 序列与调度；对本项目的指标无影响。它进入指纹 `serve_args`。若换 `CONTEXT_LENGTH`，factor 自动跟随。
+
+## 2026-09-18 · serve.sh 关闭 prefill CUDA graph
+
+**决定**：`--disable-prefill-cuda-graph`。decode CUDA graph 保持默认开启。
+
+**为什么**：sglang 0.5.20 默认启用 breakable prefill CUDA graph；在 4090 + flashinfer（首次 JIT）下捕获阶段触发 torch 内部断言 `markCaptureEnd called with no captures in progress`，服务起不来。prefill graph 只影响 prefill 的绝对耗时，不影响缓存与调度行为；作为固定环境参数写进指纹即可。
+
+**影响**：所有实验统一关闭；若日后打开，属于换环境，基线作废。
+
