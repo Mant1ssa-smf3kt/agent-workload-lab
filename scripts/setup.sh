@@ -28,7 +28,14 @@ else
 fi
 
 # ── 0.5 Python 自举：裸镜像可能没有 python。找不到 3.11+ 就从清华镜像装 Miniconda 到数据盘 ──
-find_py() { for c in python3.12 python3.11 python3.13; do command -v "$c" 2>/dev/null && return 0; done; return 1; }
+# 非交互 ssh 不加载 ~/.bashrc，镜像自带的 conda 可能不在 PATH 里：把常见位置也搜一遍。
+find_py() {
+  for c in python3.12 python3.11 python3.13; do command -v "$c" 2>/dev/null && return 0; done
+  for d in "$REMOTE_ROOT/miniconda3/bin" /root/miniconda3/bin /root/anaconda3/bin /opt/conda/bin; do
+    for c in python3.12 python3.11 python3.13; do [[ -x "$d/$c" ]] && { echo "$d/$c"; return 0; }; done
+  done
+  return 1
+}
 if ! PROJECT_PY="$(find_py)"; then
   CONDA_DIR="$REMOTE_ROOT/miniconda3"
   if [[ ! -x "$CONDA_DIR/bin/python3" ]]; then
