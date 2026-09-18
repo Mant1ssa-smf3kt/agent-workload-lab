@@ -28,8 +28,10 @@ sglang 的配套 torch 会装进独立的 `venv-serve`。
 bash scripts/sync.sh --traces                                   # 代码 + traces/ → 远端
 ssh -p <PORT> root@<HOST> 'cd /root/autodl-tmp/agent-workload-lab && bash scripts/setup.sh'
 #   幂等：venv-serve(sglang 0.5.20) + 项目 venv(uv) + ModelScope 拉 Qwen/Qwen3-8B-FP8（~8GB）
-ssh -p <PORT> root@<HOST> 'cd /root/autodl-tmp/agent-workload-lab && uv run python -m replay.run experiments/baseline-c1/config.yaml --dry-run'
+ssh -p <PORT> root@<HOST> 'cd /root/autodl-tmp/agent-workload-lab && source scripts/env.sh && uv run python -m replay.run experiments/baseline-c1/config.yaml --dry-run'
 ```
+
+远端所有 `uv run` 前先 `source scripts/env.sh`（禁止 uv 下载 Python、指向国内源）。非交互 ssh 的 PATH 里没有 conda：`uv` 在 `/root/miniconda3/bin/uv`，`setup.sh` 的日志会打印它的绝对路径。
 
 dry-run 输出 `plan` 行：trajectories=3 · steps=173 · synthetic=1 · dropped_keys=[thinking, tool_stream]。和本地一致就说明远端链路通了。关机。
 
