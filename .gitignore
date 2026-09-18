@@ -1,0 +1,15 @@
+# 硬性约束 #1：录制的 trajectory 与实验产物永不入库
+traces/*
+!traces/.gitkeep
+experiments/*/out/
+
+# 语言工具链
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+.DS_Store

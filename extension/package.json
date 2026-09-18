@@ -1,0 +1,23 @@
+{
+  "name": "@agent-workload-lab/pi-trace-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi extension: records coding-agent trajectories (exact provider payloads, per-request timing, tool timing) as JSONL for workload replay",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "smoke": "bash smoke/run.sh"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^24.0.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}
