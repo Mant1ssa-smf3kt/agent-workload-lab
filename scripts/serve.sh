@@ -63,4 +63,7 @@ bash "$HERE/fingerprint.sh" "${ARGS[@]}" > "$FP"
 echo "fingerprint: $FP" >&2
 ln -sfn "$FP" "$FINGERPRINT_DIR/serve-latest.json"
 
+# flashinfer 首次遇到新配置会 JIT 编译 kernel，需要 venv 里的 ninja 和 CUDA toolkit 的 nvcc 在 PATH 上
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export PATH="$SERVE_VENV/bin:$CUDA_HOME/bin:$PATH"
 exec "$SERVE_VENV/bin/python" -m sglang.launch_server "${ARGS[@]}"
