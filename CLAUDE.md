@@ -152,7 +152,7 @@ just replay EXP               # 正式重放，落盘 artifact
 - [ ] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
 - [ ] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
-当前状态：**W1 进行中。** 已完成：`extension/`（录制 extension，经真实 pi 0.85.1 冒烟验证）。未开始：环境脚本、pi 指向本地端点、录制、负载画像表。
+当前状态：**W1 进行中。** 已完成：`extension/`（录制 extension，经真实 pi 0.85.1 冒烟验证）、`analysis/profile.py`（负载画像表，`just profile`）。未开始：环境脚本、pi 指向本地端点、录制 20–30 条 trajectory。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 
