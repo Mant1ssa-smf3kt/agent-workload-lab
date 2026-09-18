@@ -27,10 +27,25 @@ else
   log driver "nvidia-smi absent (no-GPU mode); driver check deferred to serve.sh"
 fi
 
+# ── 0.5 Python 自举：裸镜像可能没有 python。找不到 3.11+ 就从清华镜像装 Miniconda 到数据盘 ──
+find_py() { for c in python3.12 python3.11 python3.13; do command -v "$c" 2>/dev/null && return 0; done; return 1; }
+if ! PROJECT_PY="$(find_py)"; then
+  CONDA_DIR="$REMOTE_ROOT/miniconda3"
+  if [[ ! -x "$CONDA_DIR/bin/python3" ]]; then
+    log python "no python3.11+; installing Miniconda from tuna → $CONDA_DIR"
+    curl -fsSL -o /tmp/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash /tmp/miniconda.sh -b -p "$CONDA_DIR" >/dev/null
+    rm -f /tmp/miniconda.sh
+  fi
+  export PATH="$CONDA_DIR/bin:$PATH"
+  grep -q "miniconda3/bin" ~/.bashrc 2>/dev/null || echo "export PATH=\"$CONDA_DIR/bin:\$PATH\"" >> ~/.bashrc
+  PROJECT_PY="$(find_py || command -v python3)"
+fi
+log python "$PROJECT_PY -> $("$PROJECT_PY" --version 2>&1)"
+
 # ── 1. SGLang 服务 venv ───────────────────────────────────────────────────
-log serve-venv "python: $(python3 --version 2>&1)"
 if [[ ! -x "$SERVE_VENV/bin/python" ]]; then
-  python3 -m venv "$SERVE_VENV"
+  "$PROJECT_PY" -m venv "$SERVE_VENV"
 fi
 "$SERVE_VENV/bin/pip" install -q -i "$PIP_INDEX_URL" --upgrade pip
 if ! "$SERVE_VENV/bin/python" -c "import sglang, sys; sys.exit(0 if sglang.__version__ == '$SGLANG_VERSION' else 1)" 2>/dev/null; then
@@ -43,14 +58,10 @@ log serve-venv "sglang $("$SERVE_VENV/bin/python" -c 'import sglang; print(sglan
 # ── 2. 项目 venv（replay / metrics / analysis） ───────────────────────────
 if ! command -v uv >/dev/null 2>&1; then
   log project-venv "installing uv"
-  pip install -q -i "$PIP_INDEX_URL" uv
+  "$PROJECT_PY" -m pip install -q -i "$PIP_INDEX_URL" uv
+  hash -r
 fi
 # 用机器上已有的 3.11+ 解释器，避免 uv 去 GitHub 下 python（国内网络）。
-PROJECT_PY=""
-for cand in python3.12 python3.11 python3.13; do
-  if command -v "$cand" >/dev/null 2>&1; then PROJECT_PY="$(command -v "$cand")"; break; fi
-done
-[[ -n "$PROJECT_PY" ]] || { log project-venv "no python3.11+ on PATH; install one (conda create -n py312 python=3.12)"; exit 1; }
 ( cd "$REMOTE_DIR" && UV_INDEX_URL="$PIP_INDEX_URL" UV_PYTHON_DOWNLOADS=never uv sync --group dev --python "$PROJECT_PY" )
 log project-venv "ok ($PROJECT_PY)"
 
