@@ -131,6 +131,14 @@ def test_api_mismatch_warns_or_fails(tmp_path: Path) -> None:
         build_profile([p], strict_api=True)
 
 
+def test_context_window_mismatch_warns(tmp_path: Path) -> None:
+    b = build_two_run_trace()
+    b.records[0]["model"] = {**b.records[0]["model"], "context_window": 1_000_000}
+    prof = build_profile([b.write(tmp_path / "wide.jsonl")])
+    assert len(prof.traces) == 1
+    assert any("context_window=1000000" in w for w in prof.warnings)
+
+
 def test_bad_trace_is_skipped_not_fatal(traces_dir: Path) -> None:
     (traces_dir / "c.jsonl").write_text("garbage\n")
     prof = build_profile(sorted(traces_dir.glob("*.jsonl")))

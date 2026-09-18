@@ -17,7 +17,7 @@ MODEL = {
     "id": "fake-1",
     "api": "openai-completions",
     "base_url": "http://127.0.0.1:18080/v1",
-    "context_window": 32000,
+    "context_window": 65536,
     "max_tokens": 1024,
     "reasoning": False,
 }

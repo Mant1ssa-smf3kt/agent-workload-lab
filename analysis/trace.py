@@ -19,6 +19,10 @@ SUPPORTED_SCHEMA = 1
 RECORDING_API = "openai-completions"
 """Per docs/decisions.md (2026-09-18) recordings must come from an OpenAI-compatible provider."""
 
+RECORDING_CONTEXT_WINDOW = 65536
+"""Per docs/decisions.md (2026-09-18) the recording model's contextWindow is overridden to the
+replay-side ``--context-length`` so compaction triggers at the same point. Must match scripts/serve.sh."""
+
 
 class TraceError(ValueError):
     """A trace file violates an invariant the analysis depends on."""
@@ -218,6 +222,11 @@ class Trace:
     def api(self) -> str | None:
         model = self.header.get("model")
         return model["api"] if model else None
+
+    @property
+    def context_window(self) -> int | None:
+        model = self.header.get("model")
+        return int(model["context_window"]) if model else None
 
     def turns(self) -> list[Turn]:
         """Group records into turns by (run, turn), in file order."""

@@ -32,6 +32,7 @@ from analysis.log import configure, get_logger
 from analysis.stats import Pct, fmt_pct, pct
 from analysis.trace import (
     RECORDING_API,
+    RECORDING_CONTEXT_WINDOW,
     RequestRecord,
     ToolRecord,
     Trace,
@@ -439,6 +440,13 @@ def build_profile(paths: list[Path], strict_api: bool = False) -> Profile:
                 raise TraceError(msg)
             warnings.append(msg)
             log.warning("unexpected recording api", path=str(p), api=tr.api)
+        if tr.context_window != RECORDING_CONTEXT_WINDOW:
+            msg = (
+                f"{p.name}: model.context_window={tr.context_window}, expected {RECORDING_CONTEXT_WINDOW} "
+                "(modelOverrides not applied? docs/decisions.md)"
+            )
+            warnings.append(msg)
+            log.warning("unexpected context window", path=str(p), context_window=tr.context_window)
         rq = request_rows(tr)
         tn = [turn_row(tr, t) for t in tr.turns()]
         requests.extend(rq)
