@@ -28,29 +28,35 @@ else
 fi
 
 # ── 0.5 Python 自举：裸镜像可能没有 python。找不到 3.11+ 就从清华镜像装 Miniconda 到数据盘 ──
+# 只接受 3.11–3.13：sglang/torch/flashinfer 按 Python 版本发编译 wheel，3.14 还没有（2026-09）。
 # 非交互 ssh 不加载 ~/.bashrc，镜像自带的 conda 可能不在 PATH 里：把常见位置也搜一遍。
+PY_CANDIDATES=(python3.12 python3.11 python3.13)
 find_py() {
-  for c in python3.12 python3.11 python3.13; do command -v "$c" 2>/dev/null && return 0; done
-  for d in "$REMOTE_ROOT/miniconda3/bin" /root/miniconda3/bin /root/anaconda3/bin /opt/conda/bin; do
-    for c in python3.12 python3.11 python3.13; do [[ -x "$d/$c" ]] && { echo "$d/$c"; return 0; }; done
+  for c in "${PY_CANDIDATES[@]}"; do command -v "$c" 2>/dev/null && return 0; done
+  for d in "$REMOTE_ROOT/py312/bin" /root/miniconda3/bin /root/anaconda3/bin /opt/conda/bin; do
+    for c in "${PY_CANDIDATES[@]}"; do [[ -x "$d/$c" ]] && { echo "$d/$c"; return 0; }; done
   done
   return 1
 }
 if ! PROJECT_PY="$(find_py)"; then
-  CONDA_DIR="$REMOTE_ROOT/miniconda3"
-  if [[ ! -x "$CONDA_DIR/bin/python3" ]]; then
-    log python "no python3.11+; installing Miniconda from tuna → $CONDA_DIR"
-    curl -fsSL -o /tmp/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    bash /tmp/miniconda.sh -b -p "$CONDA_DIR" >/dev/null
-    rm -f /tmp/miniconda.sh
-  fi
-  export PATH="$CONDA_DIR/bin:$PATH"
-  grep -q "miniconda3/bin" ~/.bashrc 2>/dev/null || echo "export PATH=\"$CONDA_DIR/bin:\$PATH\"" >> ~/.bashrc
-  PROJECT_PY="$(find_py || command -v python3)"
+  CONDA_DIR="$REMOTE_ROOT/py312"
+  log python "no python3.11–3.13; installing Miniconda(py312) from tuna → $CONDA_DIR"
+  curl -fsSL -o /tmp/miniconda.sh "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-py312_26.7.1-1-Linux-x86_64.sh"
+  bash /tmp/miniconda.sh -b -p "$CONDA_DIR" >/dev/null
+  rm -f /tmp/miniconda.sh
+  PROJECT_PY="$(find_py)" || { log python "bootstrap failed"; exit 1; }
 fi
-log python "$PROJECT_PY -> $("$PROJECT_PY" --version 2>&1)"
+PY_VER="$("$PROJECT_PY" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+log python "$PROJECT_PY -> $PY_VER"
 
-# ── 1. SGLang 服务 venv ───────────────────────────────────────────────────
+# ── 1. SGLang 服务 venv（解释器版本变了就重建） ─────────────────────────────
+if [[ -x "$SERVE_VENV/bin/python" ]]; then
+  VENV_VER="$("$SERVE_VENV/bin/python" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")' 2>/dev/null || echo none)"
+  if [[ "$VENV_VER" != "$PY_VER" ]]; then
+    log serve-venv "venv is python $VENV_VER, want $PY_VER; recreating"
+    rm -rf "$SERVE_VENV"
+  fi
+fi
 if [[ ! -x "$SERVE_VENV/bin/python" ]]; then
   "$PROJECT_PY" -m venv "$SERVE_VENV"
 fi
