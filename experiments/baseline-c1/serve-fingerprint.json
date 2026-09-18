@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-09-18T22:16:56+0800",
+  "hostname": "autodl-container-c25d449539-6f1cfccd",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "driver": "580.105.08",
+    "memory_mib": 24564
+  },
+  "cuda": "13.0",
+  "sglang_version": "0.5.20",
+  "torch_version": "2.13.0+cu130",
+  "python": "3.12.3",
+  "model": {
+    "id": "Qwen/Qwen3-8B-FP8",
+    "dir": "/root/autodl-tmp/models/Qwen/Qwen3-8B-FP8",
+    "quant": "fp8",
+    "config_sha256": "79e454d6cc36c41ab0e9418c8f78a033afa9ac88e5a58d67c1471de315c8d29a"
+  },
+  "serve_args": [
+    "--model-path",
+    "/root/autodl-tmp/models/Qwen/Qwen3-8B-FP8",
+    "--served-model-name",
+    "Qwen/Qwen3-8B-FP8",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--context-length",
+    "65536",
+    "--mem-fraction-static",
+    "0.85",
+    "--chunked-prefill-size",
+    "8192",
+    "--schedule-policy",
+    "lpm",
+    "--tool-call-parser",
+    "qwen25",
+    "--reasoning-parser",
+    "qwen3",
+    "--json-model-override-args",
+    "{\"rope_scaling\":{\"rope_type\":\"yarn\",\"factor\":2.0,\"original_max_position_embeddings\":32768},\"max_position_embeddings\":65536}",
+    "--enable-metrics",
+    "--enable-cache-report",
+    "--log-requests-level",
+    "0",
+    "--random-seed",
+    "0"
+  ],
+  "repo_commit": null,
+  "repo_dirty": false
+}
