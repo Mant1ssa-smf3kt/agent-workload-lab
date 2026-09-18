@@ -50,3 +50,17 @@
 
 **影响**：`CONTEXT_LENGTH` 与这里的覆盖值必须同步改；trace header 的 `model.context_window` 字段应等于 65536，`analysis/` 可据此校验。
 
+## 2026-09-18 · replayer 保真口径
+
+**决定**（`replay/trajectory.py`、`replay/config.py`）：
+1. 只重放 `outcome == done` 的请求；superseded/aborted/error 的没有 usage 与 t_end，丢弃并计入 `dropped_requests`。
+2. payload 原样转发 `messages / tools / stream / max_tokens` 等通用键，剥掉 provider 私有键（zai：`thinking`、`tool_stream`；OpenAI：`store`），`model` 换成重放模型，`developer` 角色改 `system`。剥掉的键写进 fingerprint。
+3. 输出长度：`max_tokens` = 录制侧 `usage.output`，并发 `ignore_eos: true`，让 decode 长度精确等于录制值，与小模型「想说什么」无关。录制侧是 GLM tokenizer 口径，token 数与 Qwen 有偏差，但两侧一致偏差不影响对照。
+4. 时序：`gap_before_ms` = 上一请求 `t_end` → 本请求 `t_request`（含工具时间与人类思考）。`timing=real` 按 `gap_scale` 缩放、`max_gap_s` 封顶；`timing=compressed` 全部为 0。
+5. compaction 摘要调用：录制侧拿不到 payload（见 later.md），按 `compaction.usage.input` 从上一请求消息前缀切出等量字符 + 一条 summarize 指令合成，`max_tokens = usage.output`，标记 `synthetic: true`；summary 同时报含/不含合成请求两组数。
+6. Qwen3 经 `chat_template_kwargs.enable_thinking=false` 关 thinking（`server.extra_body`），与录制侧 thinking off 对齐。
+
+**为什么**：CLAUDE.md §4——只保真 token 序列与时序，不保真模型行为。以上每一条都是把「模型行为」从变量里拿掉。
+
+**影响**：改任何一条都是换保真口径，跨口径数字不得同表。summary 里 `cache_hit_rate = Σcached_tokens / Σprompt_tokens`（§5，按请求聚合），`cache_hit_per_request` 只是辅助分布。
+

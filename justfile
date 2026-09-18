@@ -42,10 +42,10 @@ profile TRACES="traces" OUT="experiments/profile/out":
 report EXP:
     @echo "TBD: analysis.report not implemented yet (W2)"; exit 1
 
-# 远端·无卡：不连推理服务，只验证 trajectory 解析与调度逻辑（W2）
+# 无卡即可：不连推理服务，只构建计划（payload 归一化、间隔、合成 compaction）→ experiments/EXP/out/<ts>-dry/
 replay-dry EXP:
-    @echo "TBD: replay not implemented yet (W2)"; exit 1
+    uv run python -m replay.run "experiments/{{EXP}}/config.yaml" --dry-run
 
-# 远端·需要开卡：正式重放，落盘 artifact（W2）。agent 不得自动执行。
+# 【需要开卡，按小时计费。agent 不得自动执行，必须先向人确认。】正式重放 → experiments/EXP/out/<ts>/
 replay EXP:
-    @echo "TBD: replay not implemented yet (W2)"; exit 1
+    uv run python -m replay.run "experiments/{{EXP}}/config.yaml"
