@@ -38,9 +38,13 @@ smoke-ext:
 profile TRACES="traces" OUT="experiments/profile/out":
     uv run python -m analysis.profile "{{TRACES}}" --out "{{OUT}}"
 
-# 从 experiments/EXP/out/ 生成报告片段（W2+）
+# 从 experiments/EXP/out/ 下所有完成的 run 生成方差报告 → experiments/EXP/report.md
 report EXP:
-    @echo "TBD: analysis.report not implemented yet (W2)"; exit 1
+    uv run python -m analysis.report "{{EXP}}"
+
+# 两个实验对照（校验指纹一致、只动一个变量）→ experiments/EXP/compare-OTHER.md
+compare EXP OTHER:
+    uv run python -m analysis.report "{{EXP}}" --against "{{OTHER}}"
 
 # 无卡即可：不连推理服务，只构建计划（payload 归一化、间隔、合成 compaction）→ experiments/EXP/out/<ts>-dry/
 replay-dry EXP:
