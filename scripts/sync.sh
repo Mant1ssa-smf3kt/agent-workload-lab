@@ -17,6 +17,9 @@ source "$HERE/remote.env"
 
 SSH="ssh -p $REMOTE_PORT"
 DEST="$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
+# macOS 自带 rsync 2.6.9 没有 --info；rsync ≥ 3.1 才有整体进度条
+if rsync --info=progress2 --version >/dev/null 2>&1; then PROGRESS="--info=progress2"; else PROGRESS="--progress"; fi
+RSYNC=(rsync -az "$PROGRESS" -e "$SSH")
 EXCLUDES=(
   --exclude '.git/' --exclude 'node_modules/' --exclude '.venv/' --exclude '__pycache__/'
   --exclude '.mypy_cache/' --exclude '.ruff_cache/' --exclude '.pytest_cache/'
@@ -27,15 +30,15 @@ case "${1:-}" in
   --pull)
     EXP="${2:?usage: sync.sh --pull EXP}"
     mkdir -p "$ROOT/experiments/$EXP/out"
-    rsync -az --info=progress2 -e "$SSH" "$DEST/experiments/$EXP/out/" "$ROOT/experiments/$EXP/out/"
+    "${RSYNC[@]}" "$DEST/experiments/$EXP/out/" "$ROOT/experiments/$EXP/out/"
     ;;
   --traces)
-    rsync -az --info=progress2 -e "$SSH" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
-    rsync -az --info=progress2 -e "$SSH" "$ROOT/traces/" "$DEST/traces/"
+    "${RSYNC[@]}" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
+    "${RSYNC[@]}" "$ROOT/traces/" "$DEST/traces/"
     ;;
   "")
     $SSH "$REMOTE_USER@$REMOTE_HOST" "mkdir -p '$REMOTE_DIR'"
-    rsync -az --info=progress2 -e "$SSH" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
+    "${RSYNC[@]}" "${EXCLUDES[@]}" "$ROOT/" "$DEST/"
     ;;
   *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
