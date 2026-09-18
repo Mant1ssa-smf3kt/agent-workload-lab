@@ -29,6 +29,10 @@ export FINGERPRINT_DIR="${FINGERPRINT_DIR:-$REMOTE_ROOT/fingerprints}"
 export SGLANG_HOST="${SGLANG_HOST:-127.0.0.1}"
 export SGLANG_PORT="${SGLANG_PORT:-30000}"
 
-# ── 国内网络 ─────────────────────────────────────────────────────────────
+# ── 国内网络 / 磁盘 ──────────────────────────────────────────────────────
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-$REMOTE_ROOT/modelscope-cache}"
+# AutoDL 系统盘只有 30GB；pip 缓存 + 解包临时目录（sglang 全家桶 >6GB）放数据盘
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$REMOTE_ROOT/pip-cache}"
+export TMPDIR="${TMPDIR:-$REMOTE_ROOT/tmp}"
+mkdir -p "$PIP_CACHE_DIR" "$TMPDIR" 2>/dev/null || true
