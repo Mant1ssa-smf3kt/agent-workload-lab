@@ -34,17 +34,17 @@
 
 **影响**：改任何一项 = 换实验环境，已有基线作废，跨版本数字不得同表（CLAUDE.md §8.3）。`scripts/fingerprint.sh` 把这些值写进每次 serve 的指纹。
 
-## 2026-09-18 · 录制第一批 thinking 关闭
+## 2026-09-18 · 录制第一批 thinking 关闭，模型用 glm-5.2
 
-**决定**：录制用 `zai/glm-5.3:off`（或同 provider 其他模型，同样 `:off`）。
+**决定**：录制用 `zai/glm-5.2:off`。
 
-**为什么**：zai 的 thinking 开启时以 `clear_thinking: false` 发送，`reasoning_content` 会写回后续轮的 assistant 历史消息，使 prompt 形状偏离小模型重放时的形状。先拿干净的基线。
+**为什么**：zai 的 thinking 开启时以 `clear_thinking: false` 发送，pi 会把上一轮 thinking 以 `reasoning_content` 写回后续轮的 assistant 历史消息（pi-ai `openai-completions.js`），使 prompt 形状偏离小模型重放时的形状。先拿干净的基线。glm-5.3 的 `thinkingLevelMap.off` 为 `null`，不能关 thinking，因此选 glm-5.2（`off → "none"`）。
 
 **影响**：需要 reasoning 对上下文增长影响的结论时，另录一批、在 config 里标注，不与第一批混表。
 
 ## 2026-09-18 · 录制模型的 contextWindow 覆盖为重放侧的 context-length
 
-**决定**：录制时通过 `~/.pi/agent/models.json` 的 `modelOverrides` 把云端模型的 `contextWindow` 设为 65536（= `scripts/serve.sh` 的 `CONTEXT_LENGTH` 默认值），`maxTokens` 设为 8192（`scripts/pi-models.recording.json`）。
+**决定**：录制时通过 `~/.pi/agent/models.json` 的 `modelOverrides` 把云端模型的 `contextWindow` 设为 65536（= `scripts/serve.sh` 的 `CONTEXT_LENGTH` 默认值），`maxTokens` 设为 8192（`scripts/pi-models.recording.json`，已用 `PI_CODING_AGENT_DIR` 隔离目录验证 `--list-models` 显示 65.5K / 8.2K）。
 
 **为什么**：pi 在 `contextTokens > contextWindow − reserveTokens(16384)` 时 compaction。glm-5.3 窗口 1M，不覆盖则永远不 compaction，轨迹长度也不受重放服务上下文上限约束。compaction 是本项目要观察的主要缓存失效来源之一，录制侧必须能自然触发。
 
