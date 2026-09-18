@@ -139,6 +139,19 @@ def test_context_window_mismatch_warns(tmp_path: Path) -> None:
     assert any("context_window=1000000" in w for w in prof.warnings)
 
 
+def test_min_requests_skips_empty_session(traces_dir: Path) -> None:
+    from analysis.tests.conftest import TraceBuilder
+
+    b = TraceBuilder()
+    b.header(session_id="empty")
+    b.shutdown(0, 0, 0)
+    b.write(traces_dir / "empty.jsonl")
+    prof = build_profile(sorted(traces_dir.glob("*.jsonl")))
+    assert [t.session_id for t in prof.traces] == ["sess-a", "sess-b"]
+    assert any("empty.jsonl" in w and "--min-requests" in w for w in prof.warnings)
+    assert len(build_profile(sorted(traces_dir.glob("*.jsonl")), min_requests=0).traces) == 3
+
+
 def test_bad_trace_is_skipped_not_fatal(traces_dir: Path) -> None:
     (traces_dir / "c.jsonl").write_text("garbage\n")
     prof = build_profile(sorted(traces_dir.glob("*.jsonl")))
@@ -172,6 +185,10 @@ def test_main_writes_artifacts(traces_dir: Path, tmp_path: Path) -> None:
     assert len(reqs) == 8 and set(reqs["session_id"]) == {"sess-a", "sess-b"}
     meta = json.loads((out / "meta.json").read_text())
     assert len(meta["inputs"]) == 2 and all(len(i["sha256"]) == 64 for i in meta["inputs"])
+    assert meta["used"] == ["a.jsonl", "b.jsonl"] and meta["options"] == {
+        "strict_api": False,
+        "min_requests": 1,
+    }
     # every number in profile.md must be reproducible from summary.json
     summary = json.loads((out / "summary.json").read_text())
     assert summary["session"]["turns"]["p50"] == 3

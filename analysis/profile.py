@@ -420,7 +420,9 @@ class Profile:
         }
 
 
-def build_profile(paths: list[Path], strict_api: bool = False) -> Profile:
+def build_profile(paths: list[Path], strict_api: bool = False, min_requests: int = 1) -> Profile:
+    """``min_requests``: traces with fewer requests (e.g. a session opened and quit) are skipped
+    and listed in ``warnings``. Filtering happens here, never on the files (CLAUDE.md §8.2)."""
     traces: list[TraceRow] = []
     requests: list[RequestRow] = []
     turns: list[TurnRow] = []
@@ -448,6 +450,10 @@ def build_profile(paths: list[Path], strict_api: bool = False) -> Profile:
             warnings.append(msg)
             log.warning("unexpected context window", path=str(p), context_window=tr.context_window)
         rq = request_rows(tr)
+        if len(rq) < min_requests:
+            warnings.append(f"skipped {p.name}: {len(rq)} requests < --min-requests {min_requests}")
+            log.warning("skipped trace", path=str(p), requests=len(rq), min_requests=min_requests)
+            continue
         tn = [turn_row(tr, t) for t in tr.turns()]
         requests.extend(rq)
         turns.extend(tn)
@@ -589,7 +595,7 @@ def _sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
-def write_profile(profile: Profile, out: Path, inputs: list[Path]) -> None:
+def write_profile(profile: Profile, out: Path, inputs: list[Path], options: dict[str, Any]) -> None:
     out.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([asdict(r) for r in profile.traces]).to_csv(out / "traces.csv", index=False)
     pd.DataFrame([asdict(r) for r in profile.requests]).to_csv(out / "requests.csv", index=False)
@@ -605,6 +611,9 @@ def write_profile(profile: Profile, out: Path, inputs: list[Path]) -> None:
         "analysis_git_commit": _git_head(Path(__file__).resolve().parent),
         "python": sys.version.split()[0],
         "inputs": [{"path": str(p), "sha256": _sha256_file(p), "bytes": p.stat().st_size} for p in inputs],
+        "used": [t.trace for t in profile.traces],
+        "options": options,
+        "warnings": profile.warnings,
     }
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     log.info("wrote profile", out=str(out), traces=len(profile.traces), warnings=len(profile.warnings))
@@ -621,17 +630,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=f"fail instead of warn when a trace was not recorded via {RECORDING_API}",
     )
+    ap.add_argument(
+        "--min-requests",
+        type=int,
+        default=1,
+        help="skip traces with fewer requests (default 1: an opened-and-quit session is not a trajectory)",
+    )
     args = ap.parse_args(argv)
     configure()
     paths = iter_trace_paths(args.traces)
     if not paths:
         log.error("no traces found", root=str(args.traces))
         return 2
-    profile = build_profile(paths, strict_api=args.strict_api)
+    profile = build_profile(paths, strict_api=args.strict_api, min_requests=args.min_requests)
     if not profile.traces:
         log.error("no loadable traces", root=str(args.traces), warnings=profile.warnings)
         return 2
-    write_profile(profile, args.out, paths)
+    write_profile(
+        profile, args.out, paths, {"strict_api": args.strict_api, "min_requests": args.min_requests}
+    )
     return 0
 
 

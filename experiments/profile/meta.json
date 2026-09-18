@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-09-18T20:05:02+0800",
+  "analysis_git_commit": "dff5034b39692f5bc5c1bd1aa3d05a7ed812c3a7",
+  "python": "3.11.15",
+  "inputs": [
+    {
+      "path": "traces/20260918T112808.996_01a0b446-1cf4-755d-81cc-42bc16e7447c.jsonl",
+      "sha256": "8296f72b312da83f7b48aeffb219431e458dd83a877c25616023ba57307ef8d7",
+      "bytes": 899
+    },
+    {
+      "path": "traces/20260918T113328.991_01a0b44a-feed-7319-8d81-26bc60993dec.jsonl",
+      "sha256": "22b47e2bdb4310537a9e67545b60b54fd2fbb7a137b014281cf9ee8e67d37db5",
+      "bytes": 395551
+    },
+    {
+      "path": "traces/20260918T113724.590_01a0b44e-9741-7681-9e28-7be8696fbe2e.jsonl",
+      "sha256": "bf65ba3acd0deef89316c46855e8ee7f2e6695508d75e629542939ffdce2b0c9",
+      "bytes": 3654838
+    },
+    {
+      "path": "traces/20260918T114524.746_01a0b455-eadd-7017-a2d0-d234d8dbcb0c.jsonl",
+      "sha256": "b6ba0f374f0615876918b2815b0e448f2fe8b0e6f9f857644c6cd3c95245df5a",
+      "bytes": 20649124
+    }
+  ],
+  "used": [
+    "20260918T113328.991_01a0b44a-feed-7319-8d81-26bc60993dec.jsonl",
+    "20260918T113724.590_01a0b44e-9741-7681-9e28-7be8696fbe2e.jsonl",
+    "20260918T114524.746_01a0b455-eadd-7017-a2d0-d234d8dbcb0c.jsonl"
+  ],
+  "options": {
+    "strict_api": false,
+    "min_requests": 1
+  },
+  "warnings": [
+    "skipped 20260918T112808.996_01a0b446-1cf4-755d-81cc-42bc16e7447c.jsonl: 0 requests < --min-requests 1"
+  ]
+}
