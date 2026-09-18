@@ -45,7 +45,9 @@ ARGS=(
   --schedule-policy "$SCHEDULE_POLICY"
   --tool-call-parser "$TOOL_CALL_PARSER"
   --reasoning-parser "$REASONING_PARSER"
-  --json-model-override-args "{\"rope_scaling\":{\"rope_type\":\"yarn\",\"factor\":$YARN_FACTOR,\"original_max_position_embeddings\":$YARN_ORIGINAL}}"
+  # SGLang 的 get_context_length 在 rope_scaling 带 original_max_position_embeddings 时直接读 max_position_embeddings，
+  # 所以两者都要覆盖：max_position_embeddings=CONTEXT_LENGTH，YaRN 基于 32768×factor 做位置外推。
+  --json-model-override-args "{\"rope_scaling\":{\"rope_type\":\"yarn\",\"factor\":$YARN_FACTOR,\"original_max_position_embeddings\":$YARN_ORIGINAL},\"max_position_embeddings\":$CONTEXT_LENGTH}"
   --enable-metrics                       # Prometheus /metrics：cache hit、队列、batch 组成
   --enable-cache-report                  # usage.prompt_tokens_details.cached_tokens；不加则 §5 命中率全为 null
   --log-requests-level 0
