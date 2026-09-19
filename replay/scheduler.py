@@ -65,7 +65,7 @@ async def _replay_one(
     cfg: Config,
     sender: Sender,
     run_t0: float,
-    warmup_left: list[int],
+    warmup_steps: int,
     on_result: Callable[[StepResult], Awaitable[None]] | None,
 ) -> list[StepResult]:
     out: list[StepResult] = []
@@ -83,9 +83,7 @@ async def _replay_one(
         gap_actual = 0.0 if prev_end is None else (t_send - prev_end) * 1000.0
         res = await sender.send(step.payload)
         prev_end = time.perf_counter()
-        warm = warmup_left[0] > 0
-        if warm:
-            warmup_left[0] -= 1
+        warm = step.idx < warmup_steps
         sr = StepResult(
             trajectory=traj.id,
             idx=step.idx,
@@ -120,7 +118,7 @@ async def run_replay(
     queue: asyncio.Queue[Trajectory] = asyncio.Queue()
     for t in trajectories:
         queue.put_nowait(t)
-    warmup_left = [cfg.replay.warmup_requests]
+    first_id = trajectories[0].id if trajectories else None
     lock = asyncio.Lock()
 
     async def worker() -> None:
@@ -129,7 +127,8 @@ async def run_replay(
                 traj = queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
-            res = await _replay_one(traj, cfg, sender, run_t0, warmup_left, on_result)
+            warm = cfg.replay.warmup_requests if traj.id == first_id else 0
+            res = await _replay_one(traj, cfg, sender, run_t0, warm, on_result)
             async with lock:
                 stats.results.extend(res)
 

@@ -140,7 +140,7 @@ def test_synthetic_compaction_step(tmp_path: Path) -> None:
     s0, comp, s2 = traj.steps
     assert comp.synthetic and comp.req is None and comp.run == 0 and comp.turn == 0
     assert comp.payload["max_tokens"] == 50
-    assert "tools" not in comp.payload
+    assert comp.payload["tools"] == s0.payload["tools"]  # kept: templates render tools into the prefix
     assert comp.payload["messages"][0] == SYS
     assert comp.payload["messages"][-1] == {"role": "user", "content": COMPACTION_INSTRUCTION}
     # sized to ~400 of the 1000-token previous prompt: strictly fewer messages than the original
@@ -169,7 +169,7 @@ def test_synthesize_compaction_payload_budget() -> None:
     total_chars = len(json.dumps(prev["messages"], ensure_ascii=False))
     prev_tokens = total_chars // 4
     body, est = synthesize_compaction_payload(prev, prev_tokens, target_input_tokens=prev_tokens // 3)
-    assert "tools" not in body and body["stream"] is True
+    assert body["tools"] == [1] and body["stream"] is True
     assert body["messages"][0] == SYS and body["messages"][-1]["content"] == COMPACTION_INSTRUCTION
     assert 1 <= len(body["messages"]) - 1 < 6
     assert 0 < est <= prev_tokens // 3 + prev_tokens // 6  # within one message of the budget

@@ -157,11 +157,15 @@ def env_consistent(runs: list[Run]) -> tuple[bool, list[str]]:
     return not problems, problems
 
 
+# Config subtrees that count as ONE variable when comparing experiments (name + params together).
+ATOMIC_KEYS = {"transform"}
+
+
 def _flatten(d: dict[str, Any], prefix: str = "") -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in d.items():
         key = f"{prefix}{k}"
-        if isinstance(v, dict):
+        if isinstance(v, dict) and key not in ATOMIC_KEYS:
             out.update(_flatten(v, key + "."))
         else:
             out[key] = v

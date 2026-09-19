@@ -1,0 +1,25 @@
+# W3 改写：每个请求的 system prompt 末尾加当前时间（harness 把日期/时钟写进 system prompt 的常见做法）。
+name: w3-timestamp
+notes: W3 改写组 system_timestamp。与 w3-control 只差 transform。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 1
+  timing: real
+  gap_scale: 1.0
+  max_gap_s: 30
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: system_timestamp
+  params: {}
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

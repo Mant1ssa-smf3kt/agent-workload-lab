@@ -1,0 +1,27 @@
+# W3 改写：滑动窗口截断旧工具结果（最近 4 条保留，更早的截到 800 字符）——最常见的「上下文管理」优化。
+name: w3-truncate
+notes: W3 改写组 truncate_tool_results。与 w3-control 只差 transform。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 1
+  timing: real
+  gap_scale: 1.0
+  max_gap_s: 30
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: truncate_tool_results
+  params:
+    keep_recent: 4      # 最近 4 条工具结果保留原文
+    max_chars: 800      # 更早的截到 800 字符
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

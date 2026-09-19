@@ -110,6 +110,10 @@ def test_env_consistent_and_config_diff(tmp_path: Path) -> None:
     b = {"name": "b", "replay": {"concurrency": 4, "timing": "real"}, "notes": "y"}
     assert config_diff(a, b) == [("replay.concurrency", 1, 4)]
     assert config_diff(a, a) == []
+    # transform name + params are one variable
+    c = {"transform": {"name": "identity", "params": {}}}
+    d = {"transform": {"name": "truncate_tool_results", "params": {"keep_recent": 4}}}
+    assert config_diff(c, d) == [("transform", c["transform"], d["transform"])]
 
 
 def test_compare_report(tmp_path: Path) -> None:
@@ -146,7 +150,7 @@ def test_main_writes_files(tmp_path: Path) -> None:
     assert (exps / "A" / "report.md").read_text().startswith("# A · 方差")
     assert main(["A", "--against", "B", "--experiments-dir", str(exps)]) == 0
     md = (exps / "A" / "compare-B.md").read_text()
-    assert '`transform.name`: "identity" → "rewrite"' in md
+    assert '`transform`: {"name": "identity"} → {"name": "rewrite"}' in md
     assert main(["Z", "--experiments-dir", str(exps)]) == 2
     assert main(["A", "--against", "Z", "--experiments-dir", str(exps)]) == 2
     assert main(["A", "--experiments-dir", str(exps), "--stdout"]) == 0

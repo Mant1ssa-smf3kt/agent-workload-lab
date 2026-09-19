@@ -89,3 +89,25 @@
 
 **影响**：所有实验统一关闭；若日后打开，属于换环境，基线作废。
 
+
+## 2026-09-19 · replayer v2：三处保真修正
+
+**决定**：
+1. 合成 compaction 请求保留 `tools`（`synthesize_compaction_payload`）。
+2. `warmup_requests` 改为「第一条轨迹的前 N 步」，与并发无关。
+3. `metrics.key_metrics` 对 `*_total` 计数器按 label 求和（SGLang 按 `is_streaming` 拆分）。
+
+**为什么**：baseline-c1 实测合成 compaction 命中仅 0.197——Qwen3 chat template 把 tools 渲染在 system 段之后，去掉 tools 使前缀从 ~3.7k token 起失配；c1 vs c3 的 prompt tokens total 差 2740，是全局顺序 warmup 在并发下剔除了不同请求；`prompt_tokens_total` 只取到了非流式那一组 label。
+
+**影响**：replayer 版本变了（指纹 replayer commit 不同），**baseline-c1/c3 的数字不能与之后的实验同表**；W3 用自己的控制组 `w3-control`（identity）。
+
+## 2026-09-19 · W3 对照组设计：三种「看似无害」的上下文改写
+
+**决定**（`replay/transforms.py`，配置 `experiments/w3-*`）：与 `w3-control`（identity）只差 `transform` 一项：
+- `system_timestamp`：每个请求在 system prompt 末尾加「当前时间」（确定性时钟，重跑字节一致）。对应 harness 把日期/时钟写进 system prompt。
+- `tools_rotate`：每个请求把 tools 列表轮转一位；工具集与语义不变。对应无序工具注册表、动态工具加载。
+- `truncate_tool_results`（keep_recent 4 / max_chars 800）：滑动窗口截断旧工具结果。对应最常见的「上下文管理」优化。
+
+**为什么选这三个**：本地按 chat template 顺序（system → tools → messages）算相邻请求共享前缀，identity 0.990、timestamp 0.110、tools_rotate 0.110、truncate 0.983——改头（system/tools）与改尾（旧工具结果）的差异是本项目要量化的核心；compaction（录制侧实测 0.14）已在轨迹里自然出现，不另做 transform。
+
+**影响**：每组三次重跑；`analysis/report` 把 `transform` 子树当作一个变量比较。W3 使用全部 8 条 trace（223 步），与 baseline-c1 的 3 条不同，也不同表。

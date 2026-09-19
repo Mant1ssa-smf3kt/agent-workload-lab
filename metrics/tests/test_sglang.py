@@ -11,7 +11,8 @@ TEXT = """# HELP sglang:cache_hit_rate The prefix cache hit rate.
 # TYPE sglang:cache_hit_rate gauge
 sglang:cache_hit_rate{model_name="Qwen/Qwen3-8B-FP8"} 0.8125
 sglang:num_running_reqs{model_name="Qwen/Qwen3-8B-FP8"} 3
-sglang:prompt_tokens_total{model_name="Qwen/Qwen3-8B-FP8"} 123456.0
+sglang:prompt_tokens_total{is_streaming="true",model_name="Qwen/Qwen3-8B-FP8"} 123456.0
+sglang:prompt_tokens_total{is_streaming="false",model_name="Qwen/Qwen3-8B-FP8"} 44.0
 sglang:e2e_request_latency_seconds_bucket{le="0.5",model_name="Qwen/Qwen3-8B-FP8",name="x\\"y"} 7
 python_gc_objects_collected_total{generation="0"} 100
 weird line without value
@@ -31,6 +32,7 @@ def test_parse_and_flatten() -> None:
     assert any(k.startswith("sglang:nan_metric") for k in flat)  # NaN parses as float
     km = key_metrics(flat)
     assert km["sglang:cache_hit_rate"] == 0.8125 and km["sglang:num_running_reqs"] == 3
+    assert km["sglang:prompt_tokens_total"] == 123500.0  # counters summed over label sets
     assert km["sglang:gen_throughput"] is None
 
 

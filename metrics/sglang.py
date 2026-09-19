@@ -129,9 +129,15 @@ KEY_METRICS = (
 
 
 def key_metrics(flat: dict[str, float]) -> dict[str, float | None]:
-    """Pick KEY_METRICS regardless of labels (first match wins; SGLang labels by model_name)."""
+    """Pick KEY_METRICS regardless of labels. Counters (``*_total``) are summed over all label
+    sets (SGLang splits e.g. prompt_tokens_total by is_streaming); gauges take the first match."""
     out: dict[str, float | None] = {}
     for name in KEY_METRICS:
-        hit = next((v for k, v in flat.items() if k == name or k.startswith(name + "{")), None)
-        out[name] = hit
+        vals = [v for k, v in flat.items() if k == name or k.startswith(name + "{")]
+        if not vals:
+            out[name] = None
+        elif name.endswith("_total"):
+            out[name] = sum(vals)
+        else:
+            out[name] = vals[0]
     return out

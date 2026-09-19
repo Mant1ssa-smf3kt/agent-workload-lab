@@ -83,10 +83,11 @@ async def test_real_timing_honours_scaled_gaps() -> None:
 
 
 @pytest.mark.asyncio
-async def test_warmup_marks_first_requests() -> None:
-    cfg = Config(name="x", replay=ReplayConfig(timing="compressed", warmup_requests=2))
-    stats = await run_replay([traj("a", [0, 0, 0])], cfg, FakeSender())
-    assert [r.warmup for r in sorted(stats.results, key=lambda r: r.idx)] == [True, True, False]
+async def test_warmup_marks_first_steps_of_first_trajectory_only() -> None:
+    cfg = Config(name="x", replay=ReplayConfig(timing="compressed", warmup_requests=2, concurrency=2))
+    stats = await run_replay([traj("a", [0, 0, 0]), traj("b", [0, 0])], cfg, FakeSender())
+    warm = sorted((r.trajectory, r.idx) for r in stats.results if r.warmup)
+    assert warm == [("a", 0), ("a", 1)]  # independent of send interleaving across workers
 
 
 @pytest.mark.asyncio

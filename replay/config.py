@@ -73,7 +73,9 @@ class ReplayConfig:
     size. synthesize: send a request of the recorded size, marked synthetic. skip: drop it."""
     stream: bool = True
     warmup_requests: int = 0
-    """Requests sent (and discarded) before measurement starts, from the first trajectory."""
+    """The first N steps of the first trajectory (in dispatch order) are sent but excluded from
+    the summary. Defined per trajectory, not by global send order, so the excluded set does not
+    depend on concurrency."""
 
 
 @dataclass(frozen=True)

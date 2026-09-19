@@ -162,6 +162,10 @@ def synthesize_compaction_payload(
     request's messages: system prompt + the earliest messages up to the size budget + a
     summarize instruction. It shares its prefix with what the server has just seen, which is
     what pi's own summary call (verbatim old messages) does too. Returns (payload, est_tokens).
+
+    ``tools`` is kept on purpose: chat templates render the tool list inside the system
+    segment, so dropping it would break the shared prefix from the first few thousand
+    tokens (measured 0.197 hit vs ~0.99 in baseline-c1; docs/decisions.md 2026-09-19).
     """
     messages: list[dict[str, Any]] = list(prev_payload.get("messages", []))
     prev_chars = len(json.dumps(messages, ensure_ascii=False))
@@ -177,7 +181,7 @@ def synthesize_compaction_payload(
         kept.append(m)
         used += size
     kept.append({"role": "user", "content": COMPACTION_INSTRUCTION})
-    body = {k: v for k, v in prev_payload.items() if k not in ("tools", "tool_choice")}
+    body = dict(prev_payload)
     body["messages"] = kept
     return body, int(used / cpt) if cpt else 0
 
@@ -279,7 +283,13 @@ class LoadReport:
 
 
 def load_trajectories(cfg: Config, root: Path) -> LoadReport:
-    """Select, order and build trajectories per ``cfg.traces``. Skips are reported, never fatal."""
+    """Select, order and build trajectories per ``cfg.traces``, then apply ``cfg.transform``.
+    Skips are reported, never fatal; an unknown transform is a ``ConfigError``."""
+    from replay.config import ConfigError
+    from replay.transforms import TRANSFORMS, apply_transform
+
+    if cfg.transform.name not in TRANSFORMS:
+        raise ConfigError(f"transform.name {cfg.transform.name!r} unknown; known: {sorted(TRANSFORMS)}")
     tc = cfg.traces
     base = root / tc.dir if not Path(tc.dir).is_absolute() else Path(tc.dir)
     paths = [p for p in iter_trace_paths(base) if fnmatch.fnmatch(p.name, tc.include)]
@@ -294,6 +304,7 @@ def load_trajectories(cfg: Config, root: Path) -> LoadReport:
             skipped.append(f"{p.name}: {e}")
             continue
         traj = build_trajectory(tr, cfg)
+        traj.steps = apply_transform(cfg.transform.name, cfg.transform.params, traj.steps)
         n_real = sum(1 for s in traj.steps if not s.synthetic)
         if n_real < tc.min_requests:
             skipped.append(f"{p.name}: {n_real} requests < min_requests {tc.min_requests}")

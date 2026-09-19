@@ -1,0 +1,26 @@
+# W3 对照组的控制：identity（pi 原样 append-only 组装）。除 transform 外与 w3-* 逐字节相同。
+# 与 baseline-c1 的区别只是 replayer 版本（合成 compaction 保留 tools、warmup 语义），因此需要单独的控制组。
+name: w3-control
+notes: W3 控制组。三次重跑报方差。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 1
+  timing: real
+  gap_scale: 1.0
+  max_gap_s: 30
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: identity
+  params: {}
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json
