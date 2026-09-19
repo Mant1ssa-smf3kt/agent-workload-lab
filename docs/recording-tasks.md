@@ -372,6 +372,71 @@ bash scripts/record.sh ~/Projects/ClawEval t20
 
 ---
 
+## 第五批（t21–t23）：长会话补充，目标触发 compaction
+
+前 20 条只有最早的 case3 触发了 compaction（t12 34.8k、t16 44.5k、t19 43.5k，都没过 49k）。这三条用 4–5 个 prompt 把单会话推过阈值。
+
+### t21 · reactive-resume · 新增功能（长）· 「推荐信」区块贯通
+
+```bash
+bash scripts/record.sh ~/Projects/reactive-resume t21
+```
+
+> 我要给简历加一个新的自定义区块「推荐信」（references）：每条包含 name、title、company、email、phone、relationship、可选的 summary。请从 packages/schema/src/resume/data.ts 开始定义 schema，贯通到 apps/web 的编辑表单（新增一个 section）、packages/pdf 的渲染（至少默认模板）、packages/import 三个 JSON 导入器、packages/docx 导出。先 grep 列清单给我确认再动手。不要 pnpm install，不要 build，不要跑测试。
+
+> 可以，全部改。
+
+> 现在处理 i18n：这个区块所有 label 的 lingui 条目，zh-CN 和 en 都要加；sample.ts 的示例数据补两条推荐信。
+
+> ATS 抽取那边（packages/pdf/src/ats-extraction*、packages/resume/src/ats*）需要认这个区块吗？需要的话加上，并说明它对 ATS 评分有什么影响。
+
+> 把所有改动按包分组，用 git diff --stat 给我，然后逐个包写一句「为什么现有测试仍然会过」。
+
+预期：50–80 轮，prompt 应过 49k 触发 compaction。
+
+### t22 · Learn-OpenClaw · 新增功能 + 重构（长）· 工具执行超时与审计日志
+
+```bash
+bash scripts/record.sh ~/Projects/Learn-OpenClaw t22
+```
+
+> 先 uv sync。给 tools/executor.py 的 ToolExecutor 加两个能力：(1) 每个工具调用的超时（默认 30 s，可在 ToolCall 上覆盖），超时返回一个 ToolResult 错误而不是挂死；(2) 审计日志：每次 execute 把工具名、参数摘要、耗时、成功与否写成 JSON 行到一个可配置路径。两者都要有 pytest 覆盖，uv run pytest 全过。
+
+> 把审计日志接到 examples/chatbot_with_tools 和 examples/agent_with_goal 两个示例里（路径用环境变量 TOOL_AUDIT_LOG），不用真的跑示例（需要 API key），改完说明怎么验证。
+
+> tools/builtins/bash.py 的实现有没有子进程超时？如果没有，用你刚加的超时机制统一它，并补一个「命令 sleep 5 但超时 1 s」的测试。
+
+> 现在整体过一遍 tools/ 目录，把重复的错误信息拼装和路径处理抽成公共函数（tools/builtins/_common.py），保持 pytest 全过；用 git diff --stat 总结。
+
+> 最后写 tools/README.md 的「超时与审计」一节，然后 git diff 给我看，不要 commit。
+
+预期：60–90 轮，bash/edit 密集。
+
+### t23 · minimind · 重构 + 读代码（长）· 训练脚本统一入口
+
+```bash
+bash scripts/record.sh ~/Projects/minimind t23
+```
+
+> trainer/ 下 train_pretrain.py、train_full_sft.py、train_lora.py、train_dpo.py、train_distillation.py 各自解析参数、初始化模型和分布式、跑训练循环。请先逐个文件读一遍，列出五个脚本在「参数解析、模型初始化、数据加载、训练循环、保存」五个环节各自的差异表（文件+行号）。不要改代码，这台机器没有 torch，不要装。
+
+> 基于差异表，设计一个 trainer/common.py：把参数解析的公共部分、init_distributed、模型初始化、checkpoint 保存抽出来；各脚本保留自己的 loss 计算。先只写 common.py 和改 train_pretrain.py、train_full_sft.py 两个，不运行。
+
+> 再把 train_lora.py 和 train_dpo.py 接上 common.py。LoRA 的参数冻结逻辑和 DPO 的 ref model 加载要保留在各自脚本里。
+
+> train_distillation.py 和 train_grpo.py 能不能接？看一遍，能接的接，不能接的说明原因。
+
+> git diff --stat，再逐个脚本写一句行为是否不变的判断依据。
+
+预期：50–80 轮，read 结果大（五个训练脚本），后半段 edit 密集。
+
+### 复核 · 第五批
+
+- 目的单一：把 prompt 推过 49k。三条都是 4–5 个 prompt、跨多文件、要求列清单再动手（清单本身就是大块 tool 结果）。
+- 路径核对：`packages/schema/src/resume/{data,sample}.ts`、`packages/pdf/src/ats-extraction*`、`packages/resume/src/ats*`、`tools/executor.py`、`tools/builtins/bash.py`、`examples/{chatbot_with_tools,agent_with_goal}/`、`trainer/train_{pretrain,full_sft,lora,dpo,distillation,grpo}.py` 均存在（`check-task-paths.sh` 已加）。
+- 依赖：t21 禁止 install/build；t23 禁止装 torch；t22 的 `uv sync` 秒级。
+- 风险：GLM 可能在第 2–3 个 prompt 后就把上下文用到 40k+，compaction 会在中途触发——这正是要的。若某条仍没触发，不追加了：三条里两条触发即可。
+
 ## 录制顺序建议
 
 不按编号。先各仓库各录一条（t03、t06、t09、t10）确认四个仓库的 worktree 都正常，再按形状交替录，避免连续录同类任务时你自己的 prompt 节奏趋同。每录 5 条跑一次 `just profile` 看「每条 trace」表：`reqs (done)` 不为 0、无警告即可。
