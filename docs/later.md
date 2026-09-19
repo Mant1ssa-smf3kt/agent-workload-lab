@@ -10,3 +10,4 @@
 - sglang ≥ 0.5.12 全部是 CUDA 13 栈（PyPI 元数据：torch 2.11/2.13 cu13、flashinfer[cu13]、cuda-python≥13），宿主机驱动 ≥ 580。AutoDL 4090 宿主机若驱动只到 CUDA 12.x，退到 0.5.10（torch 2.9.1 cu128）。已写进 remote.md 与 setup.sh 的驱动检查。
 - 合成 compaction 请求应保留 `tools`：Qwen3 chat template 把 tools 渲染在 system 段开头之后，去掉 tools 会让整条前缀从 ~3.7k token 起失配（baseline-c1 实测该请求命中 0.197）。改 `replay/trajectory.py::synthesize_compaction_payload`，作为 W3 前的保真修正，记 decisions。
 - `metrics.key_metrics` 对带多组 label 的 counter（如 `prompt_tokens_total{is_streaming=…}`）只取第一组；应对 `*_total` 求和。
+- `warmup_requests` 语义应改为「第一条轨迹的前 N 步」而非「全局最先发出的 N 条」，否则不同并发下剔除的请求不同（c1 vs c3 的 prompt tokens total 差 2740）。

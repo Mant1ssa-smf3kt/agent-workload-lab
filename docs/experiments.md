@@ -34,3 +34,16 @@
 - 三次汇总（`report.md`）：cache hit 0.9691 ± 0.0005（CV 0.0%）、TTFT P50 247 ± 2 ms（0.9%）、P95 549 ± 17 ms（3.1%）、P99 1686 ± 82 ms（4.9%）、latency P95 22.9 ± 0.27 s
 - 结论：**方差已确认，基线成立。** 单并发下噪声 ≤ 5%（P99），后续对照效应需 ≥ 2× 于此。
 - 待修：合成 compaction 请求去掉了 `tools`，而 chat template 把 tools 渲染进 system 段，导致该请求自身命中仅 0.197（预期 ~0.99）；W3 前改为保留 tools（见 later.md）
+
+## 2026-09-19 · experiments/baseline-c3（3 条轨迹同时重放、真实时序）— 3 次完成
+- 变量：与 baseline-c1 只差 `replay.concurrency: 1 → 3`（`compare-baseline-c3.md` 自动核对，仅此一项）。原名 baseline-c4 改为 c3：只有 3 条 trace，调度器取 min(concurrency, 轨迹数)，写 4 是假的。
+- 环境：同 c1（RTX 4090 / sglang 0.5.20 / Qwen3-8B-FP8 / 同一启动参数，指纹 `experiments/baseline-c3/serve-fingerprint.json`，服务 2026-09-19 08:31 启动后连跑 c1#3 + c3×3 未重启）。replayer 代码同 c1 批（指纹 commit 为空，`.sync-commit` 本批仍挂起以保持一致；代码 = `faf2020` 的 replay/）
+- 结果（`report.md`，3 次）：cache hit **0.9697 ± 0.0000**；TTFT P50/P95/P99 = 268 ± 1 / 563 ± 19 / 1587 ± 11 ms；latency P50/P95/P99 = 2336 ± 5 / 23263 ± 8 / **41031 ± 54** ms；wall 845.0 ± 0.2 s；0 错误。判定：可用于对照。
+- 对照 c1 → c3（`experiments/baseline-c1/compare-baseline-c3.md`）：
+  - cache hit +0.0006（1.3× 噪声）：**无变化**。三条轨迹除 system prompt 外无公共前缀，也没互相挤出 KV 池
+  - TTFT P50 +20 ms（+8%，8.9× 噪声）：真实但小；P95/P99 在噪声内
+  - latency P99 **+4.6 s（+12.7%，9.8× 噪声）**：长 decode 在 2–3 条同飞时被拖慢——多并发的可测效应是 decode 竞争，不是缓存
+  - wall −33%
+- 实际并发（c3 run1 `requests.jsonl` 算得）：845 s 里服务器忙 587 s，其中 3 条同飞仅 14%、2 条 33%、1 条 53%；38 个 >40k 的大 prompt 全在 310–840 s，而另两条轨迹 359 s 即结束——**重负载阶段基本是单条**。
+- 结论：3 条 trace + 真实时序下 concurrency=3 压不到缓存；W4 的驱逐/饥饿实验需要更多轨迹（录第二批 20 条，`docs/recording-tasks.md`）或带盐复制重轨迹。
+- 小瑕疵：c1 与 c3 的 prompt tokens total 差 2740（0.05%）——`warmup_requests: 2` 按全局发送顺序剔除，并发下剔除的是不同的两条请求。下版改为按第一条轨迹的前 N 步剔除（见 later.md）。
