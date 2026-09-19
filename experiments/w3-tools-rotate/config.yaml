@@ -12,9 +12,9 @@ server:
   metrics_url: http://127.0.0.1:30000/metrics
 replay:
   concurrency: 1
-  timing: real
+  timing: compressed   # 单并发无驱逐压力，间隔期间服务器空闲；命中率与 TTFT 与 real 一致，省 ~30% 机时（decisions 2026-09-19）
   gap_scale: 1.0
-  max_gap_s: 30
+  max_gap_s: 30        # compressed 下不生效，保留以便切回 real
   output_mode: recorded
   ignore_eos: true
   compaction: synthesize

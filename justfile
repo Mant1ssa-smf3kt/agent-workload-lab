@@ -53,3 +53,7 @@ replay-dry EXP:
 # 【需要开卡，按小时计费。agent 不得自动执行，必须先向人确认。】正式重放 → experiments/EXP/out/<ts>/
 replay EXP:
     uv run python -m replay.run "experiments/{{EXP}}/config.yaml"
+
+# 【需要开卡】远端：串行跑一批实验各 N 次并出报告（后台运行，日志 /root/autodl-tmp/batch.log）
+batch REPEATS +EXPS:
+    nohup bash scripts/run-batch.sh {{REPEATS}} {{EXPS}} > /root/autodl-tmp/batch.log 2>&1 &

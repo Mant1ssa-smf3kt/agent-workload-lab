@@ -111,3 +111,11 @@
 **为什么选这三个**：本地按 chat template 顺序（system → tools → messages）算相邻请求共享前缀，identity 0.990、timestamp 0.110、tools_rotate 0.110、truncate 0.983——改头（system/tools）与改尾（旧工具结果）的差异是本项目要量化的核心；compaction（录制侧实测 0.14）已在轨迹里自然出现，不另做 transform。
 
 **影响**：每组三次重跑；`analysis/report` 把 `transform` 子树当作一个变量比较。W3 使用全部 8 条 trace（223 步），与 baseline-c1 的 3 条不同，也不同表。
+
+## 2026-09-19 · W3 用 `timing=compressed`
+
+**决定**：`experiments/w3-*` 四个配置统一 `timing: compressed`（其余不变）。W4 的并发实验仍用 `real`。
+
+**为什么**：W3 是单并发对照。间隔期间服务器空闲，radix cache 在 78k token 池、≤52k prompt 下无内存压力、不驱逐，因此命中率与 TTFT 与 real 模式一致，只是省掉全部工具/思考间隔（baseline-c1 里占 wall 的 ~30%）。完整 23 条 trace × 12 个 run 用 real 需 8–12 小时，compressed 可压到一个晚上。
+
+**影响**：W3 数字不与 real 模式的 baseline-c1/c3 同表（本来就因 replayer 版本与 trace 集合不同表）。若日后做 W3 的并发版本，必须回到 real。
