@@ -152,7 +152,7 @@ just replay EXP               # 正式重放，落盘 artifact
 - [ ] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
 - [ ] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
-当前状态：**W1 基本完成，W2 进行中。** 已完成：`extension/`（录制）、`analysis/profile.py`（画像表，已有 3 条真实 trace 的画像 `experiments/profile/`）、`scripts/`（AutoDL 环境，未上机）、`replay/` + `metrics/`（replayer 与 SGLang 指标接入，真实 trace dry-run 与假服务器全链路通过）。未做：录满 20–30 条、远端上机、基线与方差。
+当前状态：**W1、W2 完成，W3 待上机。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：`replay/transforms.py` 三种改写 + `experiments/w3-*` 四个配置已就绪（`just batch 3 w3-control w3-timestamp w3-tools-rotate w3-truncate`），等开机。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 
