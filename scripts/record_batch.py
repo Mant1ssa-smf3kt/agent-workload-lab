@@ -193,7 +193,7 @@ class PiSession:
     def _pump_stderr(self) -> None:
         assert self.proc.stderr is not None
         for raw in self.proc.stderr:
-            self.stderr_tail = (self.stderr_tail + [raw.rstrip()])[-20:]
+            self.stderr_tail = [*self.stderr_tail, raw.rstrip()][-20:]
 
     def send(self, cmd: dict[str, Any]) -> None:
         assert self.proc.stdin is not None
