@@ -59,16 +59,16 @@ uv run python -m replay.run experiments/baseline-c1/config.yaml      # 第 3 次
 
 > 三次重跑之间**不要重启 sglang**——radix cache 是热的，这正是基线要测的状态；要测冷启动另开实验并在 config `notes` 里写明。
 
-跑完 baseline-c4 同样三次，然后 **Ctrl-C 窗口 A，关机**。
+跑完 baseline-c3 同样三次，然后 **Ctrl-C 窗口 A，关机**。
 
 ## 3. 拉回、出报告
 
 ```bash
 bash scripts/sync.sh --pull baseline-c1
-bash scripts/sync.sh --pull baseline-c4
+bash scripts/sync.sh --pull baseline-c3
 just report baseline-c1            # → experiments/baseline-c1/report.md（方差表 + 判定）
-just report baseline-c4
-just compare baseline-c1 baseline-c4   # → experiments/baseline-c1/compare-baseline-c4.md
+just report baseline-c3
+just compare baseline-c1 baseline-c3   # → experiments/baseline-c1/compare-baseline-c3.md
 ```
 
 `report.md` / `compare-*.md` 提交进仓库；`out/` 不入库。`report.md` 的「判定」行说「可用于对照」才算基线成立，否则先解决噪声。

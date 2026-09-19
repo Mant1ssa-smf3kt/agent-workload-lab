@@ -1,6 +1,7 @@
-# W2 基线：4 并发、真实时序。与 baseline-c1 只差 concurrency 一项。replay/config.py 是 schema；没写的键取默认值。
-name: baseline-c4
-notes: 4 并发基线。三次重跑报方差后才可下结论（CLAUDE.md §9）。
+# W2 基线：全部轨迹同时重放（当前 3 条 → concurrency 3）、真实时序。与 baseline-c1 只差 concurrency 一项。
+# 调度器取 min(concurrency, 轨迹数)；轨迹数变了要同步改这里，否则 config 里的数字与实际并发不符。。replay/config.py 是 schema；没写的键取默认值。
+name: baseline-c3
+notes: 3 并发基线（3 条轨迹全部同时）。三次重跑报方差后才可下结论（CLAUDE.md §9）。
 traces:
   dir: traces
   include: "*.jsonl"
@@ -11,7 +12,7 @@ server:
   model: Qwen/Qwen3-8B-FP8
   metrics_url: http://127.0.0.1:30000/metrics
 replay:
-  concurrency: 4
+  concurrency: 3
   timing: real
   gap_scale: 1.0
   max_gap_s: 30          # 人类思考间隔封顶；单并发下等待就是纯浪费机时
