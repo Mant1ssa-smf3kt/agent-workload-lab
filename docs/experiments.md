@@ -47,3 +47,9 @@
 - 实际并发（c3 run1 `requests.jsonl` 算得）：845 s 里服务器忙 587 s，其中 3 条同飞仅 14%、2 条 33%、1 条 53%；38 个 >40k 的大 prompt 全在 310–840 s，而另两条轨迹 359 s 即结束——**重负载阶段基本是单条**。
 - 结论：3 条 trace + 真实时序下 concurrency=3 压不到缓存；W4 的驱逐/饥饿实验需要更多轨迹（录第二批 20 条，`docs/recording-tasks.md`）或带盐复制重轨迹。
 - 小瑕疵：c1 与 c3 的 prompt tokens total 差 2740（0.05%）——`warmup_requests: 2` 按全局发送顺序剔除，并发下剔除的是不同的两条请求。下版改为按第一条轨迹的前 N 步剔除（见 later.md）。
+
+## 2026-09-19 · experiments/profile 更新：25 条 trajectory（W1 交付物完成）
+- 输入：case1–3（手动）+ t01–t05（手动，worktree）+ t06–t22（`scripts/record_batch.py` 自动，RPC 模式）；1 条空会话按 `--min-requests 1` 跳过；t23 未录（zai 余额）。sha256 见 `experiments/profile/meta.json`。全部 glm-5.2 thinking off、contextWindow 65536、outcome 全 done、有 shutdown。
+- 形状（`experiments/profile/profile.md`）：每会话请求数 P50/P95/P99 = 28/75/124；最大 prompt tokens P50 25.4k、P95 48.6k；每请求 prompt tokens P50 21.5k（n=837）；跨轮共享前缀比例 P50 0.980；工具 500 bash / 278 read / 159 edit / 30 write；output tokens P50 114、P95 1200。
+- compaction：2 条（case3 @49k、t21 @48.6k）。t12/t16/t19 分别到 34.8k/44.5k/43.5k 未过 49152 阈值（每轮平均涨 0.5–1.5k token，轮数不够）。第五批 t21 用 5 个连续 prompt 推过阈值；t22 到 35k。
+- 结论：W1「录制 20–30 条 + 画像表」完成。W3 在这 25 条上跑。
