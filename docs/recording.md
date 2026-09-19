@@ -22,7 +22,18 @@
    默认落盘到本仓库 `traces/`（extension 按自身路径推导）；也可 `AWL_TRACE_DIR=… ` 或 `--trace-dir …` 覆盖。
 4. 确认链路：`cd extension && npm run smoke`。
 
-## 每条 trajectory
+## 自动录制（推荐）
+
+```bash
+uv run python scripts/record_batch.py --pending          # 把 docs/recording-tasks.md 里还没录的任务全部录完
+uv run python scripts/record_batch.py t06 t07 --dry-run  # 只看计划
+```
+
+驱动脚本用 pi 的 RPC 模式：每条任务一个 pi 进程（worktree 隔离、extension + `zai/glm-5.2:off` 固定），按文档里的 prompt 顺序发送，
+等 `agent_settled` 后随机等 20–45 s 再发下一个（模拟人类思考间隔），最后关 stdin 让 `shutdown` 落盘。任务与 prompt 直接从
+`docs/recording-tasks.md` 解析（`### tNN · 仓库` 标题、`record.sh` 行、引用块），文档是唯一来源。已录的任务按 trace header 的 cwd 识别。
+
+## 手动录制
 
 ```bash
 bash scripts/record.sh <仓库路径> <用例名>          # 开 worktree + 启动 pi（extension、模型、thinking 固定）
