@@ -124,7 +124,18 @@ def test_compare_report(tmp_path: Path) -> None:
     md = render_compare("A", load_runs(a), "B", load_runs(b))
     assert "`replay.concurrency`: 1 → 4" in md
     assert "可下结论" in md and "违反" not in md
-    assert "| cache hit rate | 0.9100 ± 0.0100 | 0.5100 ± 0.0100 | -0.4000 (-44.0%) | 40.0× |" in md
+    # Δ = A − B（实验组 − 对照组），百分比以对照组 B 为分母
+    assert "| cache hit rate | 0.9100 ± 0.0100 | 0.5100 ± 0.0100 | 0.4000 (+78.4%) | 40.0× |" in md
+    assert "| TTFT P95 | 510 ms ± 10 ms | 1510 ms ± 10 ms | -1000 ms (-66.2%) | 100.0× |" in md
+
+    # identical reruns → std is float-rounding noise, must read as ∞ not 1e15×
+    z, w = tmp_path / "Z", tmp_path / "W"
+    for i in range(3):
+        make_run(z, f"r{i}", hit=0.9633052413981951, ttft_p95=500)
+        make_run(w, f"r{i}", hit=0.10586718485761745, ttft_p95=500, config={"replay": {"concurrency": 4}})
+    md = render_compare("Z", load_runs(z), "W", load_runs(w))
+    assert "| cache hit rate | 0.9633 ± 0.0000 | 0.1059 ± 0.0000 | 0.8574 (+809.9%) | ∞（零噪声） |" in md
+    assert "| TTFT P95 | 500 ms ± 0 ms | 500 ms ± 0 ms | 0 ms (+0.0%) | — |" in md
 
     # two variables → invalid
     c = tmp_path / "C"

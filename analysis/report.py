@@ -5,8 +5,9 @@ Two jobs, both enforcing CLAUDE.md §9:
 1. **Variance** — all non-dry runs under ``experiments/<exp>/out/`` are one group. The report
    shows each run's key numbers and the spread across runs. Fewer than 3 runs, or runs whose
    fingerprints disagree (GPU / sglang / model / replayer commit), and the verdict says so.
-2. **Compare** — ``--against OTHER`` puts two experiments side by side. Refused when their
-   fingerprints differ (§8.3) and flagged when their configs differ in more than one key.
+2. **Compare** — ``--against OTHER`` puts two experiments side by side: EXP is the treatment,
+   OTHER the control, so Δ = EXP − OTHER and the percentage is relative to OTHER. Refused when
+   their fingerprints differ (§8.3) and flagged when their configs differ in more than one key.
 
     uv run python -m analysis.report baseline-c1
     uv run python -m analysis.report baseline-c1 --against baseline-c4
@@ -115,6 +116,10 @@ def dig(d: dict[str, Any], path: tuple[str, ...]) -> float | None:
 
 def fmt(v: float | None, unit: str, digits: int) -> str:
     return "—" if v is None else f"{v:.{digits}f}{unit}"
+
+
+# std 低于均值的这个比例视为零噪声（同配置重跑得到逐字节相同的结果时只剩浮点累加误差）
+NOISE_FLOOR = 1e-9
 
 
 @dataclass
@@ -260,7 +265,7 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
         L.append("")
         L.append(f"> **动了 {len(diffs)} 个变量，违反一次只动一个（CLAUDE.md §9）；结论无效。**")
     L.append("")
-    L.append(f"| 指标 | {a_name} (n={len(a)}) | {b_name} (n={len(b)}) | Δ | Δ / 噪声 |")
+    L.append(f"| 指标 | {a_name} (n={len(a)}) | {b_name} (n={len(b)}) | Δ (A − B) | Δ / 噪声 |")
     L.append("|---|---|---|---|---|")
     for label, path, unit, digits in KEY_NUMBERS:
         sa = spread([dig(r.summary, path) for r in a])
@@ -268,15 +273,23 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
         if sa.mean is None or sb.mean is None:
             L.append(f"| {label} | {fmt(sa.mean, unit, digits)} | {fmt(sb.mean, unit, digits)} | — | — |")
             continue
-        delta = sb.mean - sa.mean
-        rel = f" ({delta / sa.mean * 100:+.1f}%)" if sa.mean else ""
+        # A 是实验组、B 是对照组：Δ 为正即实验组数值更高，百分比以对照组为分母
+        delta = sa.mean - sb.mean
+        rel = f" ({delta / sb.mean * 100:+.1f}%)" if sb.mean else ""
         noise = max(sa.std or 0.0, sb.std or 0.0)
-        ratio = "—" if noise == 0 else f"{abs(delta) / noise:.1f}×"
+        # 三次重跑逐字节相同时 std 只剩浮点误差（~1e-17），按零噪声处理，否则打出 1e15×
+        if noise <= NOISE_FLOOR * max(abs(sa.mean), abs(sb.mean)):
+            ratio = "∞（零噪声）" if delta else "—"
+        else:
+            ratio = f"{abs(delta) / noise:.1f}×"
         ca = f"{fmt(sa.mean, unit, digits)} ± {fmt(sa.std, unit, digits)}"
         cb = f"{fmt(sb.mean, unit, digits)} ± {fmt(sb.std, unit, digits)}"
         L.append(f"| {label} | {ca} | {cb} | {fmt(delta, unit, digits)}{rel} | {ratio} |")
     L.append("")
-    L.append("Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。")
+    L.append(
+        f"Δ = {a_name} − {b_name}（实验组 − 对照组），百分比相对对照组。"
+        "Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。"
+    )
     notes: list[str] = []
     if len(a) < 3 or len(b) < 3:
         notes.append("至少一方不足 3 次重跑，方差未确认。")
