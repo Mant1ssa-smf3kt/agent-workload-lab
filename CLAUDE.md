@@ -147,12 +147,12 @@ just replay EXP               # 正式重放，落盘 artifact
 
 ## 11. 路线与当前状态
 
-- [ ] **W1 打通与刻画** — 环境脚本、pi 指向本地端点、录制 20–30 条 trajectory、产出 agent 负载画像表
-- [ ] **W2 replayer 与基线** — replayer 可用、SGLang 指标接入、单并发与多并发基线、方差确认
-- [ ] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
+- [x] **W1 打通与刻画** — 环境脚本、pi 指向本地端点、录制 20–30 条 trajectory、产出 agent 负载画像表
+- [x] **W2 replayer 与基线** — replayer 可用、SGLang 指标接入、单并发与多并发基线、方差确认
+- [x] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
 - [ ] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
-当前状态：**W1、W2 完成，W3 待上机。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：`replay/transforms.py` 三种改写 + `experiments/w3-*` 四个配置已就绪（`just batch 3 w3-control w3-timestamp w3-tools-rotate w3-truncate`），等开机。
+当前状态：**W1、W2、W3 完成，W4 待做。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：多并发尾延迟 / 缓存驱逐 / 长轨迹饥饿，需要 `timing=real` 与更多并发轨迹（见 baseline-c3 结论）。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 

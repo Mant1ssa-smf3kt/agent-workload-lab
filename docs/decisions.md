@@ -119,3 +119,11 @@
 **为什么**：W3 是单并发对照。间隔期间服务器空闲，radix cache 在 78k token 池、≤52k prompt 下无内存压力、不驱逐，因此命中率与 TTFT 与 real 模式一致，只是省掉全部工具/思考间隔（baseline-c1 里占 wall 的 ~30%）。完整 23 条 trace × 12 个 run 用 real 需 8–12 小时，compressed 可压到一个晚上。
 
 **影响**：W3 数字不与 real 模式的 baseline-c1/c3 同表（本来就因 replayer 版本与 trace 集合不同表）。若日后做 W3 的并发版本，必须回到 real。
+
+## 2026-09-20 · 头条数字 C 的口径：按 §5「单轮延迟」P95，TTFT P95 并列报告
+
+**决定**：CLAUDE.md §1 那句话里的 C 填 **单轮延迟 P95 的相对涨幅**（§5 定义：一轮端到端时间，重放侧只有模型时间一段），即 timestamp vs control 的 **+7.7%**（22813 → 24577 ms，`experiments/w3-timestamp/compare-w3-control.md`）。同一句话紧跟 **TTFT P95 +1078.7%**（507 → 5971 ms）作为并列数字，不用 TTFT 冒充「单轮延迟」。
+
+**为什么**：§5 已把「单轮延迟」定义为端到端，不能因为 TTFT 的数字更震撼就换口径。实测 P95 轮次由 decode 主导，prefill 5 s 的差额到 P95 只剩 7.7%；而 TTFT 是用户可感知的「开始出字」时间，P95 涨 10.8× 是真实的体验退化。两者各说一件事，都报。
+
+**影响**：头条句固定为：「harness 在 system prompt 末尾写入当前时间，使 radix cache 命中率从 0.9633 降到 0.1059，单轮 P95 延迟上升 7.7%（TTFT P95 上升 1078.7%，507 → 5971 ms）；改为 append-only 组装后恢复到 0.9633。」（4090 · sglang 0.5.20 · Qwen3-8B-FP8 · 单并发 · compressed · n=3。）W4 若做多并发版本，C 的口径不变。

@@ -53,3 +53,28 @@
 - 形状（`experiments/profile/profile.md`）：每会话请求数 P50/P95/P99 = 28/75/124；最大 prompt tokens P50 25.4k、P95 48.6k；每请求 prompt tokens P50 21.5k（n=837）；跨轮共享前缀比例 P50 0.980；工具 500 bash / 278 read / 159 edit / 30 write；output tokens P50 114、P95 1200。
 - compaction：2 条（case3 @49k、t21 @48.6k）。t12/t16/t19 分别到 34.8k/44.5k/43.5k 未过 49152 阈值（每轮平均涨 0.5–1.5k token，轮数不够）。第五批 t21 用 5 个连续 prompt 推过阈值；t22 到 35k。
 - 结论：W1「录制 20–30 条 + 画像表」完成。W3 在这 25 条上跑。
+
+## 2026-09-19/20 · experiments/w3-{control,timestamp,tools-rotate,truncate}（W3 上下文改写对照）— 各 3 次完成
+- 变量：与 `w3-control`（`transform: identity`）只差 `transform` 一项（三份 `compare-w3-control.md` 自动核对，仅此一项）。其余逐字节相同：25 条 trace（sorted）、concurrency 1、timing compressed、seed 0、output recorded + ignore_eos、compaction synthesize、warmup 2。
+- 环境：RTX 4090 (driver 580.105.08, CUDA 13.0) · sglang 0.5.20 · torch 2.13.0+cu130 · Qwen/Qwen3-8B-FP8 (config sha 79e454d6…) · serve args 同 baseline（YaRN×2 → 65536、chunked-prefill 8192、lpm、prefill CUDA graph 关、random-seed 0）· pi 0.85.1 · extension 0.1.0 · replayer `2ce925b8`（`.sync-commit`，clean）。指纹 `experiments/w3-*/out/*/fingerprint.json`。服务 2026-09-19 11:23 启动后 12 个 run 连跑未重启（`scripts/run-batch.sh 3 …`，11:24 → 次日 05:40）。
+- 输入：25 条 trace，837 请求/run（含合成 compaction 2 条），2 个 warmup 不计。四组 requests=837、errors=0。
+- 结果（各 `report.md`，n=3；`compare-w3-control.md` 为对照，Δ 相对 control）：
+
+  | 组 | cache hit | TTFT P50 / P95 / P99 (ms) | latency P50 / P95 / P99 (ms) | prompt tok 总 | wall (s) |
+  |---|---|---|---|---|---|
+  | control | 0.9633 ± 0.0000 | 236 / 507 / 852 | 2352 / 22813 / 39842 | 19.47M | 4623.6 ± 2.5 |
+  | system_timestamp | **0.1059** ± 0.0000 | 2306 / **5971** / 7668 | 5550 / 24577 / 41619 | 19.49M (+0.1%) | 6615.0 ± 0.8 |
+  | tools_rotate | **0.3150** ± 0.0000 | 1231 / 5951 / 7684 | 5237 / 24076 / 41128 | 19.47M (±0) | 6243.7 ± 2.6 |
+  | truncate_tool_results | 0.9102 ± 0.0000 | 240 / 695 / 1006 | 2267 / 21194 / 39231 | 13.78M (−29.2%) | 4412.6 ± 0.2 |
+
+  - 方差：四组 cache hit 三次逐字节相同（std 为浮点误差，表里显示 ∞）；TTFT/latency 各分位 std ≤ 54 ms，CV ≤ 1%。所有对照 Δ/噪声 ≥ 5×，最小的是 truncate 的 TTFT P50（−4 ms，5.2×）。
+  - timestamp vs control：hit −0.8574（−89.0%）；TTFT P50 +877.8%、**P95 +1078.7%**（507 → 5971 ms）、P99 +800.4%；latency P50 +135.9%、**P95 +7.7%**、P99 +4.5%；wall +43.1%。
+  - tools_rotate vs control：hit −0.6483（−67.3%）；TTFT P95 +1074%；latency P50 +122.7%、P95 +5.5%；wall +35.0%。
+  - truncate vs control：hit −0.0531（−5.5%）；TTFT P95 +37.3%、P99 +18.1%；latency P50 −3.6%、P95 −7.1%；prompt tokens −29.2%；wall −4.6%。
+- 机制（`out/*/requests.jsonl`，run 1，按请求算 `res_cached_tokens`）：control 每请求命中 P50 22167 tok（prompt P50 22759）。timestamp 每请求命中 P50 3369、**最大 3723**——只剩 system prompt 里时间戳之前的那段，tools + 全部 messages 每轮从头 prefill，98% 请求命中率 < 0.5。tools_rotate 命中 P50 3752 但最大 21848：轮转周期对齐时整段前缀能命中，所以 0.315 > 0.106；59% 请求 < 0.5。truncate 命中 P50 13942 / prompt 15139，8% 请求 < 0.5——只有截断窗口滑过的那些轮次失配。
+- 结论：
+  1. **头条数字成立**（口径见 `docs/decisions.md` 2026-09-20）：在 system prompt 末尾写当前时间，使 radix cache 命中率 0.9633 → 0.1059，单轮 P95 延迟 +7.7%（TTFT P95 +1078.7%，507 → 5971 ms）；append-only（control）为 0.9633。
+  2. 单轮 P95 只涨 7.7% 而 TTFT P95 涨 10.8×：P95 轮次是长输出轮（输出按录制长度 decode：P50 114 / P95 1210 / max 4339 tok，`requests.jsonl` `res_completion_tokens`），decode 主导端到端；prefill 从 0.5 s 变 6 s 在 P50 上是 +136%，到 P95 被摊薄。**改头（system/tools）的代价主要落在 TTFT 与 P50，不是尾延迟**。
+  3. 改头 ≫ 改尾：改 system prompt 末尾（timestamp）与改 tools 顺序（rotate）都把命中打到 ≤ 0.32；改旧工具结果（truncate）只掉 5 个点，还省 29% prompt token、P95 反降 7%。W1 本地按 chat template 预估的共享前缀（0.110 / 0.110 / 0.983）与实测（0.106 / 0.315 / 0.910）方向一致；rotate 高于预估是因为轮转周期对齐，truncate 低于预估是因为截断改变的是「后一轮 prompt 的中段」而非只在尾部追加。
+  4. 单并发无内存压力下命中率三次完全一致，噪声全在延迟上（≤ 1%）；对照效应远超 §9 的 2× 门槛。
+- 已知偏差：compressed 时序，不与 real 模式的 baseline-c1/c3 同表；timestamp 组 prompt tokens 多 20925（每请求 +25 tok 时间戳本身），不影响结论。
