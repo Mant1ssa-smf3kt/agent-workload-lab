@@ -29,7 +29,7 @@ EXCLUDES=(
 # 远端没有 .git（被排除）；把本地 HEAD 与 dirty 状态写成 .sync-commit 一起同步，供指纹读取（CLAUDE.md §9）
 {
   echo "commit=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
-  echo "dirty=$(git -C "$ROOT" status --porcelain 2>/dev/null | grep -q . && echo true || echo false)"
+  echo "dirty=$(git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null | grep -q . && echo true || echo false)"
   echo "synced_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$ROOT/.sync-commit"
 

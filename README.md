@@ -70,8 +70,8 @@ pi + extension/  ──record──▶  traces/*.jsonl  ──replay/──▶  
 | `extension/` | pi extension (TypeScript) that records every provider request verbatim with timing points, tool durations and turn boundaries. Observe-only. |
 | `replay/` | Replayer: trajectory → normalised payload sequence → replayed to an OpenAI-compatible endpoint at a chosen concurrency and timing mode; writes a self-describing artifact per run (config, fingerprint, plan, per-request log, metrics snapshots, summary). Includes the context transforms under test. |
 | `metrics/` | SGLang `/metrics` sampler. |
-| `analysis/` | Workload profile, variance/comparison reports (refuse to compare mismatched fingerprints or more than one changed variable), figures. |
-| `experiments/` | One directory per experiment: `config.yaml` + generated `report.md` / `compare-*.md`. Raw `out/` is not committed. |
+| `analysis/` | Workload profile, variance/comparison reports (refuse to compare mismatched fingerprints or more than one changed variable — a changed SGLang launch flag counts as a variable), figures, and `estimate` — the GPU-free first gate: every request rendered through the served model's real chat template and tokenizer, hit rate = token-level longest common prefix with what the server has seen (calibrated to the measured runs within 0.0007 at c=1). |
+| `experiments/` | One directory per experiment: `config.yaml` + generated `report.md` / `compare-*.md` / `estimate.md`. Raw `out/` is not committed. `w5-*` are planned, not yet run. |
 | `scripts/` | Remote (AutoDL) setup, SGLang launch with fingerprinting, rsync, recording helpers. |
 | `docs/` | [`findings.md`](docs/findings.md) conclusions · [`experiments.md`](docs/experiments.md) run log incl. negative results · [`decisions.md`](docs/decisions.md) metric definitions and trade-offs · [`recording.md`](docs/recording.md) / [`remote.md`](docs/remote.md) runbooks · [`figures/`](docs/figures) |
 

@@ -54,7 +54,8 @@ def git_info(cwd: Path) -> dict[str, Any]:
             return None
 
     head = run("rev-parse", "HEAD")
-    status = run("status", "--porcelain")
+    # Tracked files only, like `git describe --dirty`: an untracked artifact must not mark the code dirty.
+    status = run("status", "--porcelain", "--untracked-files=no")
     if head is not None:
         return {"commit": head, "dirty": bool(status), "source": "git"}
     # Remote checkouts are rsynced without .git; scripts/sync.sh leaves .sync-commit behind.
