@@ -74,7 +74,7 @@ docs/           实验日志、决策记录、later.md
 - **prefix cache 命中率** = 命中的 prefill token 数 / 总 prefill token 数。按请求聚合，不按会话。
 - **TTFT** = 请求发出到收到第一个内容 token 的墙钟时间。含排队。
 - **单轮延迟** = 一轮 agent turn 的端到端时间，需拆成三段上报：模型时间 / 工具执行时间 / harness 开销。三段之和与总时长的差额也要记录。
-- **尾延迟** 一律报 P50 / P95 / P99，**禁止只报均值**。
+- **尾延迟** 一律报 P50 / P95 / P99，**禁止只报均值**。客户端超时（`timeout_s`）的请求按右删失计入分位，不得剔除；落在删失值上的分位标 `≥`（`docs/decisions.md` 2026-09-21）。
 - **上下文增长** = 每轮 prompt token 数随轮次的曲线。
 - **跨轮共享前缀比例** = 相邻两轮 prompt 的最长公共前缀 token 数 / 后一轮 prompt token 数。
 
@@ -150,9 +150,9 @@ just replay EXP               # 正式重放，落盘 artifact
 - [x] **W1 打通与刻画** — 环境脚本、pi 指向本地端点、录制 20–30 条 trajectory、产出 agent 负载画像表
 - [x] **W2 replayer 与基线** — replayer 可用、SGLang 指标接入、单并发与多并发基线、方差确认
 - [x] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
-- [ ] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
+- [x] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
-当前状态：**W1、W2、W3 完成，W4 待做。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：多并发尾延迟 / 缓存驱逐 / 长轨迹饥饿，需要 `timing=real` 与更多并发轨迹（见 baseline-c3 结论）。
+当前状态：**W1–W4 实验全部完成，剩最终报告。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：`w4-c{1,2,4,8}` 并发扫描 + `w4-c4-timestamp` 各三次（`experiments/w4-*/report.md`、`compare-*.md`，`docs/experiments.md` 2026-09-21）：悬崖在 c2→c4（命中 0.963 → 0.752，TTFT P95 506 → 13107 ms），c8 命中 0.531、11 个请求排队 ≥ 600 s 超时（按右删失计入），15 个 run 回撤数全为 0；timestamp 改写在 c4 下单轮 P95 +36.7%（c1 下为 +7.7%）。不补 c3、不做 hint 实验（`docs/decisions.md` 2026-09-21）。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 

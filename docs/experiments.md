@@ -78,3 +78,33 @@
   3. 改头 ≫ 改尾：改 system prompt 末尾（timestamp）与改 tools 顺序（rotate）都把命中打到 ≤ 0.32；改旧工具结果（truncate）只掉 5 个点，还省 29% prompt token、P95 反降 7%。W1 本地按 chat template 预估的共享前缀（0.110 / 0.110 / 0.983）与实测（0.106 / 0.315 / 0.910）方向一致；rotate 高于预估是因为轮转周期对齐，truncate 低于预估是因为截断改变的是「后一轮 prompt 的中段」而非只在尾部追加。
   4. 单并发无内存压力下命中率三次完全一致，噪声全在延迟上（≤ 1%）；对照效应远超 §9 的 2× 门槛。
 - 已知偏差：compressed 时序，不与 real 模式的 baseline-c1/c3 同表；timestamp 组 prompt tokens 多 20925（每请求 +25 tok 时间戳本身），不影响结论。
+
+## 2026-09-20/21 · experiments/w4-c{1,2,4,8} + w4-c4-timestamp（W4 并发扫描与并发下的 timestamp 对照）— 各 3 次完成
+- 变量：并发扫描四组与 `w4-c1` 只差 `replay.concurrency`（1/2/4/8）；`w4-c4-timestamp` 与 `w4-c4` 只差 `transform`（identity → system_timestamp）。五份 `compare-*.md` 自动核对均为单一差异。其余逐字节相同：25 条 trace（sorted）、**timing real**（gap_scale 1、max_gap_s 30）、seed 0、output recorded + ignore_eos、compaction synthesize、warmup 2、`server.timeout_s` 600。
+- 环境：RTX 4090 · sglang 0.5.20 · Qwen/Qwen3-8B-FP8 · serve args 同 W3（YaRN×2 → 65536、chunked-prefill 8192、**schedule-policy lpm**、mem-fraction 0.85、random-seed 0）· pi 0.85.1 · replayer `d77ffcc4`（`.sync-commit`，clean）。指纹 `experiments/w4-*/out/*/fingerprint.json`。服务 2026-09-20 10:06 启动后 15 个 run 连跑未重启（10:07 → 次日 02:14），顺序 c1×3 → c4×3 → c4-timestamp×3 → c8×3 → c2×3。
+- 输入：25 条 trace，837 请求/run（含合成 compaction 2 条），2 个 warmup 不计。c1/c2/c4/c4-timestamp errors=0；**c8 三次共 11 个 `ReadTimeout`**（见下）。
+- 口径变更（`docs/decisions.md` 2026-09-21）：超时请求按右删失计入 TTFT/latency 分位。五组 `summary.json` 已用 `just resummarize` 从 `requests.jsonl` 重算；12 个零错误 run 数字逐字节不变，只有 c8 的分位变化（旧值留在 `summary.prev.json`）。
+- 结果（各 `report.md`，n=3；ms）：
+
+  | 组 | cache hit | TTFT P50 / P95 / P99 | latency P50 / P95 / P99 | 驱逐 tok/次 | 队列非空采样占比 | wall (s) |
+  |---|---|---|---|---|---|---|
+  | c1 | 0.9633 ± 0.0000 | 240 / 506 / 856 | 2350 / 22710 / 39765 | 0.96M | 0% | 5958 ± 3 |
+  | c2 | 0.9626 ± 0.0001 | 261 / 544 / 1643 (CV 22%) | 2548 / 23973 / 41092 | 0.97M | 1.6% | 3175 ± 1 |
+  | c4 | 0.7520 ± 0.0054 | 428 / **13107** / 27845 | 6100 / 37269 / 64770 | 5.0–5.2M | 48–50% | 2792 ± 6 |
+  | c8 | 0.5309 ± 0.0155 | 4674 / 37104 (CV 9%) / 223480 (CV 17%) | 10561 / 70486 / 231259 (CV 14%) | 9.0–9.6M | 79–85% | 3237 ± 70 |
+  | c4-timestamp | **0.0981** ± 0.0002 | 4907 / 18061 / 45842 | 10891 / 50959 / 92756 | **17.83M** | 51–53% | 4167 ± 5 |
+
+  驱逐量 = `metrics_after − metrics_before` 的 `sglang:evicted_tokens_total`（c1 第一次 run 无 before 快照，取后两次）；队列占比 = `metrics_samples.jsonl` 中 `sglang:num_queue_reqs > 0` 的采样比例；每 run prompt tokens 总量 19.47M（c8 因超时少 0.5%）。
+- 对照（`compare-*.md`，Δ 相对对照组）：
+  - c2 vs c1：hit −0.1%、TTFT P50 +8.6%、P95 +7.4%、latency P95 +5.6%、P99 +3.3%（Δ/噪声 ≥ 5.8×）；TTFT P99 +91.9% 但仅 2.2× 噪声，**不下结论**。
+  - **c4 vs c1**：hit −21.9%（0.9633 → 0.7520）；TTFT P50 +78.4%、**P95 +2488.5%**（506 → 13107 ms）、P99 +3153.4%；latency P50 +159.5%、**P95 +64.1%**、P99 +62.9%。全部 ≥ 23× 噪声。
+  - c8 vs c4：hit −29.4%（→ 0.5309）；TTFT P50 +991.2%、P95 +183.1%、P99 +702.6%；latency P50 +73.1%、P95 +89.1%、P99 +257.0%（5.1–16×）。
+  - **c4-timestamp vs c4**：hit −87.0%（0.7520 → 0.0981）；TTFT P50 +1045.6%、P95 +37.8%、P99 +64.6%；latency P50 +78.5%、**P95 +36.7%**（37269 → 50959 ms）、P99 +43.2%；wall +49.3%。全部 ≥ 8× 噪声。
+- c8 的 11 个超时（`out/*/requests.jsonl`，`res_error` = `ReadTimeout`，`res_ttfb_ms` 为空即服务端 600 s 内未发响应头）：6 个在同一条 125 请求的长轨迹（`20260918T114524`，turn 34–44，prompt 25.6–32.2k）上成对出现（超时后下一轮紧接着再超时）；另 5 个里 3 个是某个 run 的 `turn 0`，含一条冷启动请求（prompt 1675、录制 cache_read 0）。全部发生在各 run 的前 1600 s（8 条同飞阶段）。`sglang:num_retracted_reqs` 三次均为 0，`num_running_reqs` 最大 8、`num_queue_reqs` 最大 7。
+- 结论：
+  1. **多并发下的退化来自 radix 前缀驱逐 + 排队，不是回撤。** 五组 15 个 run `num_retracted_reqs` 全为 0——`w4-c8/config.yaml` 里「预期出现 retraction」**未发生**（负面结果）。命中率随并发下降（0.963 → 0.963 → 0.752 → 0.531）与驱逐量同步上升（1M → 1M → 5M → 9M tok/run），KV 池 78k token 装不下 4 条以上 20–50k 的上下文。
+  2. **悬崖在 c2 → c4**：c2 相对 c1 各项 ≤ 9%（队列非空 1.6%），c4 起 TTFT P95 跳 24×、队列有一半时间非空。c8 队列 80% 时间非空、最深 7，尾部出现 ≥ 600 s 的饥饿。
+  3. **饥饿的形态**：超时集中在最长的那条轨迹与 run 首请求。LPM 调度按最长前缀匹配排序，前缀被驱逐的长请求与没有前缀的新请求排到最后，在 8 条同飞时可等超过 10 分钟（机制推断；数据只到调度器指标与超时分布）。
+  4. **缓存失效的代价随并发放大**：timestamp 改写在 c4/real 下使单轮 P95 +36.7%（TTFT P95 +37.8%），而 W3 在 c1/compressed 下为 +7.7%（TTFT P95 +1078.7%）。两者时序模式不同不同表；但 W4-c1（real）与 W3-control（compressed）各分位差 ≤ 1.7%，支持 decisions 2026-09-19「单并发下两种时序数字一致」。单并发时失效只推高 TTFT、被 decode 摊薄；多并发时多出的 17.8M 驱逐 tok 的重 prefill 占住了 GPU，把所有人的尾延迟一起抬高。
+  5. 方差：c1/c2/c4/c4-timestamp 各分位 CV ≤ 4.8%（c2 TTFT P99 22% 例外）；c8 的 TTFT/latency P99 CV 14–17%，超时数 2/4/5 次，**c8 只下方向性结论**，其绝对分位数是删失下界与高噪声的组合。
+- 未做：c3（用户判断意义不大）、c8 调大 timeout 重跑（删失口径已给出下界）、hint 实验（CLAUDE.md §11 可砍项）。见 `docs/decisions.md` 2026-09-21。

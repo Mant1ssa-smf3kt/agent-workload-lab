@@ -127,3 +127,19 @@
 **为什么**：§5 已把「单轮延迟」定义为端到端，不能因为 TTFT 的数字更震撼就换口径。实测 P95 轮次由 decode 主导，prefill 5 s 的差额到 P95 只剩 7.7%；而 TTFT 是用户可感知的「开始出字」时间，P95 涨 10.8× 是真实的体验退化。两者各说一件事，都报。
 
 **影响**：头条句固定为：「harness 在 system prompt 末尾写入当前时间，使 radix cache 命中率从 0.9633 降到 0.1059，单轮 P95 延迟上升 7.7%（TTFT P95 上升 1078.7%，507 → 5971 ms）；改为 append-only 组装后恢复到 0.9633。」（4090 · sglang 0.5.20 · Qwen3-8B-FP8 · 单并发 · compressed · n=3。）W4 若做多并发版本，C 的口径不变。
+
+## 2026-09-21 · 超时请求按右删失计入尾延迟分位，不再剔除
+
+**决定**：replayer 因 `server.timeout_s` 放弃等待的请求（`ReadTimeout` / `WriteTimeout`），其 TTFT / 单轮延迟按**右删失**计入分位：观测值 = 放弃等待时刻（≈ timeout_s），真实值只知 ≥ 它。`analysis.stats.pct_censored` 把删失值按其下界排序参与 nearest-rank；某分位的 rank 之内含删失值时，该分位标 `≥`（下界）。报告新增 `timeouts (censored)` 行；非超时错误（HTTP 4xx/5xx）仍剔除并阻塞判定。cache hit rate 口径不变（仍只按拿到 usage 的请求聚合）。已完成 run 用 `just resummarize EXP` 从 `requests.jsonl` 重算 `summary.json`，旧文件留作 `summary.prev.json`。
+
+**为什么**：w4-c8 三次共 11 个请求在队列里等满 600 s 被客户端断开（`res_ttfb_ms` 为空，服务端连响应头都没发）。旧口径把它们当错误剔除，等于把最慢的 1.3% 样本删掉再算 P99——恰好是 W4 要测的「长轨迹饥饿」尾部。重算后 w4-c8 的 TTFT P99 从 132.5–176.1 s 变为 185.8–262.6 s，latency P99 从 177.3–181.7 s 变为 200.2–265.0 s；P50/P95 变化 ≤ 12%。不选择调大 timeout 重跑 c8：删失口径已能给出正确方向的界，且 GPU 已关（用户决定）。
+
+**影响**：需重算的基线 = 所有 `experiments/*/out/`。实际只有 w4-c8 的数字变化；其余 12 个 W4 run 与 W3 / baseline 全部 0 错误，重算结果逐字节相同（已核对），已提交的报告数字不受影响。`summary.json` 新增 `timeout_s`、`n_timeouts`、`all.n_censored`、`*_ms.p{50,95,99}_censored`、`*_ms.max_censored`。CLAUDE.md §5 同步加一句。
+
+## 2026-09-21 · W4 收尾范围：并发扫描 c1/c2/c4/c8 + c4 下的 timestamp 对照，不补 c3，不做 hint 实验
+
+**决定**：W4 以 `experiments/w4-c{1,2,4,8}`（只动 concurrency）与 `w4-c4-timestamp`（只动 transform）五组各三次收尾。不补 c3，不重跑 c8，不做 Dynamo `agent_hints` 类实验。
+
+**为什么**：c1→c2 各指标变化 ≤ 9%（TTFT P99 除外，Δ/噪声仅 2.2×），c2→c4 出现悬崖（TTFT P95 544 → 13107 ms，24×），c3 落在悬崖中间对结论帮助有限（用户判断）。c8 已观察到超时（饥饿），删失口径给出下界即可。hint 实验按 CLAUDE.md §11 属可砍项。
+
+**影响**：W4 完成；报告的并发结论只覆盖 c ∈ {1,2,4,8}，不对 c3、c>8 外推。
