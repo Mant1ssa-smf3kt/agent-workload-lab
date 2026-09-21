@@ -17,7 +17,7 @@
 3. 让 pi 常驻加载 extension，免得每次敲 `-e`：
    ```json
    // ~/.pi/agent/settings.json
-   { "extensions": ["/Users/mant1ssa/Projects/ClawEval/extension/src/index.ts"] }
+   { "extensions": ["/Users/mant1ssa/Projects/agent-workload-lab/extension/src/index.ts"] }
    ```
    默认落盘到本仓库 `traces/`（extension 按自身路径推导）；也可 `AWL_TRACE_DIR=… ` 或 `--trace-dir …` 覆盖。
 4. 确认链路：`cd extension && npm run smoke`。

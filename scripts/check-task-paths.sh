@@ -5,7 +5,7 @@ P=~/Projects
 repo_dir() {  # macOS 自带 bash 3.2 没有关联数组
   case "$1" in
     minimind) echo "$P/minimind" ;; openclaw) echo "$P/Learn-OpenClaw" ;;
-    rr) echo "$P/reactive-resume" ;; awl) echo "$P/ClawEval" ;;
+    rr) echo "$P/reactive-resume" ;; awl) echo "$P/agent-workload-lab" ;;
   esac
 }
 check() { # repo relpath...

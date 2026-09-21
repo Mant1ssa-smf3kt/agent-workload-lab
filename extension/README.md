@@ -19,10 +19,10 @@ Lifecycle observers (`agent_*`, `turn_*`, `tool_execution_*`, `session_compact*`
 
 ```bash
 # one-off
-pi -e /path/to/ClawEval/extension/src/index.ts
+pi -e /path/to/agent-workload-lab/extension/src/index.ts
 
 # or permanently, in ~/.pi/agent/settings.json
-{ "extensions": ["/path/to/ClawEval/extension/src/index.ts"] }
+{ "extensions": ["/path/to/agent-workload-lab/extension/src/index.ts"] }
 ```
 
 Trace directory, first hit wins:

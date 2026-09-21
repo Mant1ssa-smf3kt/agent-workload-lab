@@ -6,18 +6,18 @@
 
 ```bash
 # 推荐：开独立 worktree，不碰你的工作树；extension / 模型 / thinking 固定
-bash /Users/mant1ssa/Projects/ClawEval/scripts/record.sh ~/Projects/minimind t01
+bash /Users/mant1ssa/Projects/agent-workload-lab/scripts/record.sh ~/Projects/minimind t01
 
 # 等价的手动命令（昨天你是这样直接在仓库里跑的）
 cd ~/Projects/minimind
-pi -e /Users/mant1ssa/Projects/ClawEval/extension/src/index.ts --model zai/glm-5.2:off
-#   trace 落到 /Users/mant1ssa/Projects/ClawEval/traces/（extension 按自身路径推导）
+pi -e /Users/mant1ssa/Projects/agent-workload-lab/extension/src/index.ts --model zai/glm-5.2:off
+#   trace 落到 /Users/mant1ssa/Projects/agent-workload-lab/traces/（extension 按自身路径推导）
 #   可选：--trace-dir <dir> 改目录；--name <名字> 给会话起名
 ```
 
 前提：`~/.pi/agent/models.json` 里 glm-5.2 的 contextWindow 已覆盖为 65536（`pi --list-models | grep glm-5.2` 显示 `65.5K`）。结束会话用 Ctrl-D 或 `/quit`。
 
-任务 id 即 `record.sh` 的第二个参数。四个仓库：`minimind`（Python，训练代码）、`Learn-OpenClaw`（Python，小 agent 框架，能跑 pytest）、`reactive-resume`（TS monorepo，**没装依赖：不 install、不 build、不跑测试**）、`ClawEval`（本项目 Python 侧，`uv sync` 后能跑 pytest）。
+任务 id 即 `record.sh` 的第二个参数。四个仓库：`minimind`（Python，训练代码）、`Learn-OpenClaw`（Python，小 agent 框架，能跑 pytest）、`reactive-resume`（TS monorepo，**没装依赖：不 install、不 build、不跑测试**）、`agent-workload-lab`（本项目 Python 侧，`uv sync` 后能跑 pytest）。
 
 形状配比（对照 recording.md 的表）：读代码 5 · 小修 bug 5 · 新增功能 4 · 重构 3 · 跑命令/排错 3。
 
@@ -167,10 +167,10 @@ bash scripts/record.sh ~/Projects/reactive-resume t09
 
 预期：8–14 轮，read → edit，输出中等。
 
-### t10 · ClawEval · 修 bug · percentile 边界
+### t10 · agent-workload-lab · 修 bug · percentile 边界
 
 ```bash
-bash scripts/record.sh ~/Projects/ClawEval t10
+bash scripts/record.sh ~/Projects/agent-workload-lab t10
 ```
 
 > 先 uv sync --group dev。analysis/stats.py 的 percentile 用的是 nearest-rank：请检查 n=1、p=0、p=100、以及 values 里混有 None 和 NaN 时 pct() 的行为，写测试到 analysis/tests/test_stats.py 覆盖这些边界，不合理的地方修掉（NaN 应该被当成缺失值排除，并在返回里能看出来）。uv run pytest 和 uv run ruff check 都要过。
@@ -243,10 +243,10 @@ bash scripts/record.sh ~/Projects/minimind t13
 
 预期：10–16 轮。
 
-### t14 · ClawEval · 新增功能 · profile 加 --json 与每 trace 工具表
+### t14 · agent-workload-lab · 新增功能 · profile 加 --json 与每 trace 工具表
 
 ```bash
-bash scripts/record.sh ~/Projects/ClawEval t14
+bash scripts/record.sh ~/Projects/agent-workload-lab t14
 ```
 
 > 先 uv sync --group dev。analysis/profile.py 现在输出 profile.md 和 summary.json。请加两个东西：(1) 命令行选项 --json，把 summary 直接打印到 stdout（和写文件二选一）；(2) profile.md 的「每条 trace」表后面加一张「每条 trace 的工具混合」表：每行一个 trace，列是各工具的调用次数和错误数。数据全部来自已有的 ToolRow，不要新算指标。补测试到 analysis/tests/test_profile.py，uv run pytest、ruff check、mypy 都要过。
@@ -343,10 +343,10 @@ bash scripts/record.sh ~/Projects/reactive-resume t19
 
 预期：12–20 轮。
 
-### t20 · ClawEval · 跑/排错 · SSE 跨块切分的测试
+### t20 · agent-workload-lab · 跑/排错 · SSE 跨块切分的测试
 
 ```bash
-bash scripts/record.sh ~/Projects/ClawEval t20
+bash scripts/record.sh ~/Projects/agent-workload-lab t20
 ```
 
 > 先 uv sync --group dev，跑一遍 uv run pytest 看现状。replay/client.py 用 httpx 的 aiter_lines 解析 SSE。我担心一种情况：一条 `data: {...}` 被 HTTP 分块切成两半到达时能不能正确拼回。请在 replay/tests/test_client.py 里用 httpx.MockTransport 构造一个把响应体按奇怪边界（比如每 7 个字节）切开发送的流，验证 usage 和 ttft 仍然正确。如果现在的实现有问题就修。pytest、ruff check、mypy 都要过。
@@ -363,7 +363,7 @@ bash scripts/record.sh ~/Projects/ClawEval t20
 
 ### 复核 · 第四批
 
-- 形状：读 ×2（t16/t17）、重构 ×2（t18/t19）、跑/排错 ×1（t20）。加上前三批，总计读 5 · 修 5 · 功能 4 · 重构 3 · 跑/排错 3 = 20；仓库分布 minimind 6 · Learn-OpenClaw 6 · reactive-resume 5 · ClawEval 3。
+- 形状：读 ×2（t16/t17）、重构 ×2（t18/t19）、跑/排错 ×1（t20）。加上前三批，总计读 5 · 修 5 · 功能 4 · 重构 3 · 跑/排错 3 = 20；仓库分布 minimind 6 · Learn-OpenClaw 6 · reactive-resume 5 · agent-workload-lab 3。
 - compaction 候选：t12、t16、t11（三个 run 叠加）、t18；加上已录的 case3，≥ 3 条能撑到 49k。
 - 路径核对：`packages/pdf/src/{document,context}.tsx`、`packages/pdf/src/semantic/legacy-parity.ts`、`packages/pdf/src/ats-extraction.integration.test.tsx`、`packages/resume/src/ats*`、`packages/schema/src/templates.ts`、`apps/server/src/{rpc,openapi,mcp}`、`packages/api`、`packages/db`、`trainer/{train_full_sft,train_lora,train_dpo}.py`、`packages/import/src/{json-resume,reactive-resume-json,reactive-resume-v4-json}.tsx`、`packages/import/src/html.ts`、`replay/client.py`、`replay/tests/test_client.py` 均存在。
 - 真实性：t20 描述的跨块切分问题在 httpx `aiter_lines` 下其实是安全的（它按行缓冲），agent 会得出「现有实现没问题」——这是有价值的负面结果形状；t16 的 legacy-parity.ts 是真实存在的兼容层，问题不是编的。

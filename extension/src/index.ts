@@ -18,7 +18,7 @@
  *   3. `<repo>/traces/`      i.e. ../../traces relative to this file
  *
  * Usage:
- *   pi -e /path/to/ClawEval/extension/src/index.ts
+ *   pi -e /path/to/agent-workload-lab/extension/src/index.ts
  * or add the path to `extensions` in ~/.pi/agent/settings.json.
  */
 

@@ -45,11 +45,11 @@ pi (coding agent harness)
 extension/      TypeScript。pi extension，录制 trajectory 与轮次级事件
 replay/         Python。workload replayer：读 trajectory，按并发与时序重放
 metrics/        Python。SGLang 指标抓取与归一化
-analysis/       Python。出表出图，生成报告片段
+analysis/       Python。出表出图（report / plot），生成报告片段
 experiments/    每个实验一个目录：config.yaml + 结果 artifact + 环境指纹
 traces/         录制的 trajectory（**不入库**，见 .gitignore）
 scripts/        AutoDL 环境装配、服务起停、本地↔远端同步
-docs/           实验日志、决策记录、later.md
+docs/           findings.md 结论汇总、experiments.md 实验日志、decisions.md 决策、figures/ 出图、later.md
 ```
 
 **语言分工**：只有 `extension/` 是 TypeScript（因为 pi 是 TS）。其余全部 Python。不要在 Python 侧引入 Node 依赖，反之亦然。
@@ -101,6 +101,9 @@ docs/           实验日志、决策记录、later.md
 just test            # 单元测试，不需要 GPU
 just lint            # 格式与类型检查
 just report EXP      # 从 experiments/EXP/out/ 生成报告片段
+just compare EXP CTL # 对照表（校验指纹一致、只动一个变量）
+just plot            # docs/figures/ 出图 + 同名 csv
+just resummarize EXP # summary 口径变更后从 requests.jsonl 重算
 
 # 远端（无卡模式即可）
 bash scripts/setup.sh         # 幂等，装依赖 + 拉权重
@@ -152,7 +155,7 @@ just replay EXP               # 正式重放，落盘 artifact
 - [x] **W3 改进与头条数字** — 上下文组装策略对照组，填满第 1 节那句话的 A/B/C/D
 - [x] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
-当前状态：**W1–W4 实验全部完成，剩最终报告。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：`w4-c{1,2,4,8}` 并发扫描 + `w4-c4-timestamp` 各三次（`experiments/w4-*/report.md`、`compare-*.md`，`docs/experiments.md` 2026-09-21）：悬崖在 c2→c4（命中 0.963 → 0.752，TTFT P95 506 → 13107 ms），c8 命中 0.531、11 个请求排队 ≥ 600 s 超时（按右删失计入），15 个 run 回撤数全为 0；timestamp 改写在 c4 下单轮 P95 +36.7%（c1 下为 +7.7%）。不补 c3、不做 hint 实验（`docs/decisions.md` 2026-09-21）。
+当前状态：**W1–W4 实验全部完成；结论汇总在 `docs/findings.md`，README 已重写为结果优先。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：`w4-c{1,2,4,8}` 并发扫描 + `w4-c4-timestamp` 各三次（`experiments/w4-*/report.md`、`compare-*.md`，`docs/experiments.md` 2026-09-21）：悬崖在 c2→c4（命中 0.963 → 0.752，TTFT P95 506 → 13107 ms），c8 命中 0.531、11 个请求排队 ≥ 600 s 超时（按右删失计入），15 个 run 回撤数全为 0；timestamp 改写在 c4 下单轮 P95 +36.7%（c1 下为 +7.7%）。不补 c3、不做 hint 实验（`docs/decisions.md` 2026-09-21）。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 
