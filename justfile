@@ -50,6 +50,10 @@ compare EXP OTHER:
 resummarize +EXPS:
     uv run python -m replay.resummarize {{EXPS}}
 
+# 从 experiments/*/out/ 出图（W4 并发扫描、W3 上下文改写）→ docs/figures/*.png + 同名 .csv
+plot OUT="docs/figures":
+    uv run python -m analysis.plot --out "{{OUT}}"
+
 # 无卡即可：不连推理服务，只构建计划（payload 归一化、间隔、合成 compaction）→ experiments/EXP/out/<ts>-dry/
 replay-dry EXP:
     uv run python -m replay.run "experiments/{{EXP}}/config.yaml" --dry-run

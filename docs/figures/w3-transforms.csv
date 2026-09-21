@@ -1,0 +1,5 @@
+experiment,transform,concurrency,cache_hit_rate_mean,cache_hit_rate_min,cache_hit_rate_max,cache_hit_rate_n,evicted_mtok_mean,evicted_mtok_min,evicted_mtok_max,evicted_mtok_n,ttft_p95_s_mean,ttft_p95_s_min,ttft_p95_s_max,ttft_p95_s_n,latency_p95_s_mean,latency_p95_s_min,latency_p95_s_max,latency_p95_s_n
+w3-control,append-only (control),1,0.9633,0.9633,0.9633,3,0.9589,0.9589,0.9589,2,0.5066,0.502,0.5111,3,22.8129,22.7896,22.8376,3
+w3-timestamp,system_timestamp,1,0.1059,0.1059,0.1059,3,17.6759,17.6745,17.6787,3,5.9711,5.9665,5.9742,3,24.5767,24.5723,24.5834,3
+w3-tools-rotate,tools_rotate,1,0.315,0.315,0.315,3,13.584,13.584,13.584,3,5.951,5.9486,5.9547,3,24.0763,24.0716,24.0825,3
+w3-truncate,truncate_tool_results,1,0.9102,0.9102,0.9102,3,1.4801,1.4781,1.481,3,0.6954,0.6907,0.7013,3,21.1944,21.1829,21.2078,3

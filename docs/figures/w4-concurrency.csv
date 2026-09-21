@@ -1,0 +1,6 @@
+experiment,transform,concurrency,cache_hit_rate_mean,cache_hit_rate_min,cache_hit_rate_max,cache_hit_rate_n,evicted_mtok_mean,evicted_mtok_min,evicted_mtok_max,evicted_mtok_n,ttft_p95_s_mean,ttft_p95_s_min,ttft_p95_s_max,ttft_p95_s_n,latency_p95_s_mean,latency_p95_s_min,latency_p95_s_max,latency_p95_s_n
+w4-c1,identity,1,0.9633,0.9633,0.9633,3,0.9589,0.9589,0.9589,2,0.5064,0.5041,0.5095,3,22.7103,22.7028,22.7243,3
+w4-c2,identity,2,0.9626,0.9626,0.9628,3,0.9721,0.9696,0.9734,3,0.5437,0.5367,0.5489,3,23.9732,23.9578,23.9939,3
+w4-c4,identity,4,0.752,0.7458,0.7553,3,5.0822,5.0237,5.1935,3,13.107,12.8349,13.5795,3,37.269,37.2308,37.3387,3
+w4-c8,identity,8,0.5309,0.5151,0.5461,3,9.3338,9.024,9.6347,3,37.1041,34.2837,40.673,3,70.4857,68.751,73.3301,3
+w4-c4-timestamp,system_timestamp,4,0.0981,0.0979,0.0982,3,17.8315,17.829,17.8347,3,18.0609,17.8065,18.1919,3,50.9591,50.579,51.7032,3
