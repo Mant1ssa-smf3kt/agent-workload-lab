@@ -5,9 +5,11 @@ description = "Characterize coding-agent workload against LLM serving; replay pi
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.27",
+    "jinja2>=3.1",
     "matplotlib>=3.9",
     "pandas>=2.2",
     "pyyaml>=6.0",
+    "tokenizers>=0.20",
 ]
 
 [dependency-groups]

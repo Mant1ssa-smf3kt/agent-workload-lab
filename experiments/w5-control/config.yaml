@@ -1,0 +1,28 @@
+# W5 批 1 控制组：identity，c=1 / compressed，与 w3-control 逐字节相同的配置。
+# 为什么要重跑而不是复用 w3-control：replayer commit 已过 d77ffcc（删失聚合、resummarize、transforms 新位置），
+# analysis/report 按 replayer commit 判环境一致（CLAUDE.md §8.3），新 run 不得与旧 run 同表；顺带验证新 server session
+# 能否复现 0.9633（单并发命中率字节级确定，复现不了说明有别的变了）。本地第一道门估计：experiments/w5-*/estimate.md。
+name: w5-control
+notes: W5 批 1 控制组（identity，c1/compressed）。三次重跑报方差。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 1
+  timing: compressed   # 单并发无驱逐压力，间隔期间服务器空闲；命中率与 TTFT 与 real 一致，省 ~30% 机时（decisions 2026-09-19）
+  gap_scale: 1.0
+  max_gap_s: 30        # compressed 下不生效，保留以便切回 real
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: identity
+  params: {}
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

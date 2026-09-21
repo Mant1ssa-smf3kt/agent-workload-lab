@@ -1,6 +1,6 @@
 # w3-timestamp vs w3-control
 
-配置差异：
+配置差异（含 server 启动参数 `serve.*`）：
 - `transform`: {"name": "system_timestamp", "params": {}} → {"name": "identity", "params": {}}
 
 | 指标 | w3-timestamp (n=3) | w3-control (n=3) | Δ (A − B) | Δ / 噪声 |
@@ -16,6 +16,7 @@
 | prompt tokens total | 19492943 ± 0 | 19472018 ± 0 | 20925 (+0.1%) | ∞（零噪声） |
 | requests | 837 ± 0 | 837 ± 0 | 0 (+0.0%) | — |
 | errors | 0 ± 0 | 0 ± 0 | 0 | — |
+| timeouts (censored) | — | — | — | — |
 | wall | 6615.0 s ± 0.8 s | 4623.6 s ± 2.5 s | 1991.3 s (+43.1%) | 796.3× |
 
 Δ = w3-timestamp − w3-control（实验组 − 对照组），百分比相对对照组。Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。

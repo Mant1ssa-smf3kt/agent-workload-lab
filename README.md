@@ -92,6 +92,7 @@ uv sync && just test && just lint                 # Python 3.12 + uv; Node 20+ f
 bash scripts/record.sh <repo> <case-name>         # record one trajectory with pi (your own model/API key)
 just profile                                      # workload profile → experiments/profile/out/
 just replay-dry w4-c4                             # build the replay plan without a server
+just estimate w3-timestamp w3-control             # first gate: hit-rate estimate through the real chat template + tokenizer
 ```
 
 Remote (one 24 GB GPU; the project used AutoDL RTX 4090, see [`docs/remote.md`](docs/remote.md)):

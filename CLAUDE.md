@@ -104,6 +104,7 @@ just report EXP      # 从 experiments/EXP/out/ 生成报告片段
 just compare EXP CTL # 对照表（校验指纹一致、只动一个变量）
 just plot            # docs/figures/ 出图 + 同名 csv
 just resummarize EXP # summary 口径变更后从 requests.jsonl 重算
+just estimate EXP [CTL] # 第一道门：真模板 + 真 tokenizer 估计单租户命中率，不需要 GPU → experiments/EXP/estimate.md
 
 # 远端（无卡模式即可）
 bash scripts/setup.sh         # 幂等，装依赖 + 拉权重
@@ -156,6 +157,8 @@ just replay EXP               # 正式重放，落盘 artifact
 - [x] **W4 并发与收尾** — 尾延迟退化、缓存驱逐、长 trajectory 饥饿；报告与可复现脚本
 
 当前状态：**W1–W4 实验全部完成；结论汇总在 `docs/findings.md`，README 已重写为结果优先。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：`w4-c{1,2,4,8}` 并发扫描 + `w4-c4-timestamp` 各三次（`experiments/w4-*/report.md`、`compare-*.md`，`docs/experiments.md` 2026-09-21）：悬崖在 c2→c4（命中 0.963 → 0.752，TTFT P95 506 → 13107 ms），c8 命中 0.531、11 个请求排队 ≥ 600 s 超时（按右删失计入），15 个 run 回撤数全为 0；timestamp 改写在 c4 下单轮 P95 +36.7%（c1 下为 +7.7%）。不补 c3、不做 hint 实验（`docs/decisions.md` 2026-09-21）。
+
+**W5（已规划，待开卡）**：`experiments/w5-*` 三批（`docs/decisions.md` 2026-09-21）——批 1 头条 remedy 的可执行形式（时间戳移到 messages 末尾，`w5-tail` vs `w5-control`，本地估计 0.9620 vs 0.9633）；批 2 并发下验证（`w5-c4-tail`、`w5-c4-truncate` vs `w5-c4`）；批 3 LPM 饥饿对照（`w5-c8-fcfs` vs `w5-c8-lpm`，server 端变量）。每批自带重跑的控制组（replayer commit 已变）。GPU 前的本地准备已完成；开卡逐批向人确认。任何 harness 侧改写先过 `just estimate`。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
 

@@ -11,8 +11,12 @@ from analysis.report import (
     main,
     render_compare,
     render_variance,
+    serve_args_diff,
+    serve_args_map,
     spread,
 )
+
+SERVE_ARGS = ["--model-path", "/m", "--host", "127.0.0.1", "--port", "30000", "--schedule-policy", "lpm"]
 
 
 def make_run(
@@ -26,6 +30,7 @@ def make_run(
     gpu: str = "RTX 4090",
     commit: str = "abc",
     config: dict[str, Any] | None = None,
+    serve_args: list[str] | None = None,
 ) -> Path:
     d = exp_dir / "out" / run_id
     d.mkdir(parents=True)
@@ -53,6 +58,7 @@ def make_run(
         "extension_versions": ["0.1.0"],
         "replayer": {"commit": commit, "dirty": False},
         "traces": [{"id": "a"}, {"id": "b"}],
+        "serve": {"serve_args": SERVE_ARGS if serve_args is None else serve_args},
     }
     cfg: dict[str, Any] = {
         "name": exp_dir.name,
@@ -142,6 +148,51 @@ def test_env_consistent_and_config_diff(tmp_path: Path) -> None:
     c = {"transform": {"name": "identity", "params": {}}}
     d = {"transform": {"name": "truncate_tool_results", "params": {"keep_recent": 4}}}
     assert config_diff(c, d) == [("transform", c["transform"], d["transform"])]
+
+
+def test_serve_args_are_a_variable(tmp_path: Path) -> None:
+    assert serve_args_map(["--a", "1", "--flag", "--b", "x", "--host", "h", "--port", "1", "stray"]) == {
+        "--a": "1",
+        "--flag": True,
+        "--b": "x",
+    }
+    # within one experiment the launch flags must match
+    exp = tmp_path / "e"
+    make_run(exp, "r1", hit=0.9, ttft_p95=1)
+    make_run(exp, "r2", hit=0.9, ttft_p95=1, serve_args=[*SERVE_ARGS[:-1], "fcfs"])
+    ok, problems = env_consistent(load_runs(exp))
+    assert not ok and "serve_args" in problems[0]
+    assert env_consistent(load_runs(exp), include_serve=False)[0]
+    runs = load_runs(exp)
+    assert serve_args_diff(runs[0], runs[1]) == [("serve.--schedule-policy", "lpm", "fcfs")]
+
+    # across experiments: identical configs + one differing flag = one variable, not a rerun
+    a, s = tmp_path / "A", tmp_path / "S"
+    for i in range(3):
+        make_run(a, f"r{i}", hit=0.9, ttft_p95=500)
+        make_run(s, f"r{i}", hit=0.8, ttft_p95=700, serve_args=[*SERVE_ARGS[:-1], "fcfs"])
+    md = render_compare("S", load_runs(s), "A", load_runs(a))
+    assert '`serve.--schedule-policy`: "fcfs" → "lpm"' in md
+    assert "同配置重跑" not in md and "可下结论" in md and "两组指纹不一致" not in md
+    # a flag plus a config key → two variables
+    s2 = tmp_path / "S2"
+    make_run(
+        s2,
+        "r0",
+        hit=0.8,
+        ttft_p95=700,
+        serve_args=[*SERVE_ARGS[:-1], "fcfs"],
+        config={"replay": {"concurrency": 4}},
+    )
+    md = render_compare("S2", load_runs(s2), "A", load_runs(a))
+    assert "动了 2 个变量" in md
+    # no serve section at all (older fingerprints) → no serve variables
+    old = tmp_path / "O"
+    make_run(old, "r0", hit=0.9, ttft_p95=500)
+    fp = json.loads((old / "out" / "r0" / "fingerprint.json").read_text())
+    del fp["serve"]
+    (old / "out" / "r0" / "fingerprint.json").write_text(json.dumps(fp))
+    assert load_runs(old)[0].serve_args == {}
 
 
 def test_compare_report(tmp_path: Path) -> None:

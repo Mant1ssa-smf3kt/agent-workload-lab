@@ -1,6 +1,6 @@
 # w3-tools-rotate vs w3-control
 
-配置差异：
+配置差异（含 server 启动参数 `serve.*`）：
 - `transform`: {"name": "tools_rotate", "params": {}} → {"name": "identity", "params": {}}
 
 | 指标 | w3-tools-rotate (n=3) | w3-control (n=3) | Δ (A − B) | Δ / 噪声 |
@@ -16,6 +16,7 @@
 | prompt tokens total | 19472018 ± 0 | 19472018 ± 0 | 0 (+0.0%) | — |
 | requests | 837 ± 0 | 837 ± 0 | 0 (+0.0%) | — |
 | errors | 0 ± 0 | 0 ± 0 | 0 | — |
+| timeouts (censored) | — | — | — | — |
 | wall | 6243.7 s ± 2.6 s | 4623.6 s ± 2.5 s | 1620.1 s (+35.0%) | 621.2× |
 
 Δ = w3-tools-rotate − w3-control（实验组 − 对照组），百分比相对对照组。Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。

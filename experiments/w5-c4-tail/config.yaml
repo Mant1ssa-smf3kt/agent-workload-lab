@@ -1,0 +1,27 @@
+# W5 批 2 改写：system_timestamp@tail 在 c=4 / real 下。与 w5-c4 只差 transform。
+# 预期是「无差异」（命中 ≈ 0.752，多出的 17.8M 驱逐消失）——按 §9 记为等价性 / 负面结果，Δ ≤ 噪声不是实验失败。
+name: w5-c4-tail
+notes: W5 批 2 改写组 system_timestamp@tail 在 c4 下。与 w5-c4 只差 transform。预期 Δ ≤ 噪声。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 4
+  timing: real         # W4 看并发下的重叠与驱逐，必须保留真实间隔（decisions 2026-09-19）
+  gap_scale: 1.0
+  max_gap_s: 30        # 人类思考间隔封顶
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: system_timestamp
+  params:
+    position: tail   # 同一条时间戳，作为 messages 末尾一条 user 消息、每轮替换；system/tools/历史逐字节不变
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

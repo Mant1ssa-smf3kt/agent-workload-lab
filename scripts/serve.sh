@@ -11,7 +11,7 @@
 #   CONTEXT_LENGTH     模型上下文上限。agent 轨迹常见 30k–100k，默认 65536
 #   MEM_FRACTION       静态显存占比；FP8 8B 在 24GB 上 0.85 留 ~14GB 给 KV
 #   CHUNKED_PREFILL    chunked prefill 大小；影响长 prompt 的排队与 TTFT
-#   SCHEDULE_POLICY    lpm = longest-prefix-match（radix cache 友好，默认）/ fcfs
+#   SCHEDULE_POLICY    lpm = longest-prefix-match（radix cache 友好，本脚本默认）/ fcfs（sglang 0.5.20 的出厂默认）
 #   EXTRA_ARGS         其他参数
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

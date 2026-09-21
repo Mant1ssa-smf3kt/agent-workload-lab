@@ -1,7 +1,7 @@
 # baseline-c1 · 方差
 
 环境：GPU NVIDIA GeForce RTX 4090 · sglang 0.5.20 · model Qwen/Qwen3-8B-FP8 · pi 0.85.1 · replayer TBD
-配置：timing=real · concurrency=1 · transform=identity · traces=3
+配置：timing=real · concurrency=1 · transform=identity · traces=3 · timeout_s=600
 
 | 指标 | 20260918T222305 | 20260918T224449 | 20260919T083248 | mean ± std | min – max | CV |
 |---|---|---|---|---|---|---|
@@ -16,6 +16,7 @@
 | prompt tokens total | 4991988 | 4991988 | 4991988 | 4991988 ± 0 | 4991988 – 4991988 | 0.0% |
 | requests | 171 | 171 | 171 | 171 ± 0 | 171 – 171 | 0.0% |
 | errors | 0 | 0 | 0 | 0 ± 0 | 0 – 0 | — |
+| timeouts (censored) | — | — | — | — | — | — |
 | wall | 1266.3 s | 1265.8 s | 1248.1 s | 1260.1 s ± 10.4 s | 1248.1 s – 1266.3 s | 0.8% |
 
 **判定**：3 次以上同配置重跑，指纹一致，无错误；可用于对照。

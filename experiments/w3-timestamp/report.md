@@ -1,7 +1,7 @@
 # w3-timestamp · 方差
 
 环境：GPU NVIDIA GeForce RTX 4090 · sglang 0.5.20 · model Qwen/Qwen3-8B-FP8 · pi 0.85.1 · replayer 2ce925b8
-配置：timing=compressed · concurrency=1 · transform=system_timestamp · traces=25
+配置：timing=compressed · concurrency=1 · transform=system_timestamp · traces=25 · timeout_s=600
 
 | 指标 | 20260919T151600 | 20260919T170618 | 20260919T185637 | mean ± std | min – max | CV |
 |---|---|---|---|---|---|---|
@@ -16,6 +16,7 @@
 | prompt tokens total | 19492943 | 19492943 | 19492943 | 19492943 ± 0 | 19492943 – 19492943 | 0.0% |
 | requests | 837 | 837 | 837 | 837 ± 0 | 837 – 837 | 0.0% |
 | errors | 0 | 0 | 0 | 0 ± 0 | 0 – 0 | — |
+| timeouts (censored) | — | — | — | — | — | — |
 | wall | 6614.5 s | 6615.9 s | 6614.6 s | 6615.0 s ± 0.8 s | 6614.5 s – 6615.9 s | 0.0% |
 
 **判定**：3 次以上同配置重跑，指纹一致，无错误；可用于对照。

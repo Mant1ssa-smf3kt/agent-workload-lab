@@ -1,0 +1,26 @@
+# W5 批 3 控制组：identity，c=8 / real，--schedule-policy lpm（scripts/serve.sh 默认），配置与 w4-c8 逐字节相同。
+# 重跑理由同 w5-control。主指标：超时数与成对模式、命中率；c8 的 P99 CV 14–17%，只作方向参考。
+name: w5-c8-lpm
+notes: W5 批 3 控制组（identity，c8/real，schedule-policy lpm）。三次重跑报方差。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 8
+  timing: real         # W4 看并发下的重叠与驱逐，必须保留真实间隔（decisions 2026-09-19）
+  gap_scale: 1.0
+  max_gap_s: 30        # 人类思考间隔封顶
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: identity
+  params: {}
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

@@ -1,6 +1,6 @@
 # w4-c4-timestamp vs w4-c4
 
-配置差异：
+配置差异（含 server 启动参数 `serve.*`）：
 - `transform`: {"name": "system_timestamp", "params": {}} → {"name": "identity", "params": {}}
 
 | 指标 | w4-c4-timestamp (n=3) | w4-c4 (n=3) | Δ (A − B) | Δ / 噪声 |

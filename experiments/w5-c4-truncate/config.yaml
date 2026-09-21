@@ -1,0 +1,29 @@
+# W5 批 2 改写：truncate_tool_results（与 w3-truncate 同参数）在 c=4 / real 下。与 w5-c4 只差 transform。
+# 问题：每会话 footprint 22k → 15k 后 78k 池子装得下 ~5 条，c4 是否退回悬崖之内？截断本身失配（c1 下 0.910）
+# 与驱逐减少相反方向，结果不可预知；预测命中落在 0.75–0.91 之间，TTFT P95 应显著下降。
+name: w5-c4-truncate
+notes: W5 批 2 改写组 truncate_tool_results 在 c4 下。与 w5-c4 只差 transform。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 4
+  timing: real         # W4 看并发下的重叠与驱逐，必须保留真实间隔（decisions 2026-09-19）
+  gap_scale: 1.0
+  max_gap_s: 30        # 人类思考间隔封顶
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: truncate_tool_results
+  params:
+    keep_recent: 4      # 与 w3-truncate 相同
+    max_chars: 800
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

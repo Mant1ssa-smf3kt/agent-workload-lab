@@ -1,7 +1,7 @@
 # w3-tools-rotate · 方差
 
 环境：GPU NVIDIA GeForce RTX 4090 · sglang 0.5.20 · model Qwen/Qwen3-8B-FP8 · pi 0.85.1 · replayer 2ce925b8
-配置：timing=compressed · concurrency=1 · transform=tools_rotate · traces=25
+配置：timing=compressed · concurrency=1 · transform=tools_rotate · traces=25 · timeout_s=600
 
 | 指标 | 20260919T204655 | 20260919T223104 | 20260920T001512 | mean ± std | min – max | CV |
 |---|---|---|---|---|---|---|
@@ -16,6 +16,7 @@
 | prompt tokens total | 19472018 | 19472018 | 19472018 | 19472018 ± 0 | 19472018 – 19472018 | 0.0% |
 | requests | 837 | 837 | 837 | 837 ± 0 | 837 – 837 | 0.0% |
 | errors | 0 | 0 | 0 | 0 ± 0 | 0 – 0 | — |
+| timeouts (censored) | — | — | — | — | — | — |
 | wall | 6246.0 s | 6244.2 s | 6240.9 s | 6243.7 s ± 2.6 s | 6240.9 s – 6246.0 s | 0.0% |
 
 **判定**：3 次以上同配置重跑，指纹一致，无错误；可用于对照。

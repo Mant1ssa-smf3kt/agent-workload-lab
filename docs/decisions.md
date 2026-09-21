@@ -143,3 +143,49 @@
 **为什么**：c1→c2 各指标变化 ≤ 9%（TTFT P99 除外，Δ/噪声仅 2.2×），c2→c4 出现悬崖（TTFT P95 544 → 13107 ms，24×），c3 落在悬崖中间对结论帮助有限（用户判断）。c8 已观察到超时（饥饿），删失口径给出下界即可。hint 实验按 CLAUDE.md §11 属可砍项。
 
 **影响**：W4 完成；报告的并发结论只覆盖 c ∈ {1,2,4,8}，不对 c3、c>8 外推。
+
+## 2026-09-21 · 第一道门：真 chat template + 真 tokenizer 的单租户命中率估计（`just estimate`）
+
+**决定**：新增 `analysis/estimate.py`。对一个实验 config，用与 `replay.run` 相同的加载、归一化、transform 与派发顺序取出全部 step，按 sglang 0.5.20 `/v1/chat/completions` 的真实路径渲染（HF `apply_chat_template(tokenize=False, add_generation_prompt=True, tools=…)` + `encode(add_special_tokens=False)`；list content 压成 `" ".join(text parts)`；`chat_template_kwargs` 取自 config 的 `server.extra_body`），用重放模型自己的 tokenizer 分词，把每个请求的命中 token 定义为与「同一轨迹上一请求」或「更早轨迹首请求」的最长公共前缀（c=1 顺序、不驱逐），另报「同一轨迹任意更早请求」的上界（缓存无限大）。输出 `experiments/<exp>/estimate.{json,md}`，入库；tokenizer 文件（11 MB）从 ModelScope 拉到 `~/.cache/agent-workload-lab/`，不入库。依赖新增 `jinja2`、`tokenizers`（轻量）。
+
+**校准**（`experiments/*/estimate.json` vs 各 `out/*/summary.json`，均为 §5 口径 Σcached/Σprompt）：
+
+| 实验 | 估计 | 上界 | 实测 | 差 |
+|---|---|---|---|---|
+| w3-control / w4-c1 | 0.9633 | 0.9633 | 0.9633 | ±0.0000 |
+| w3-timestamp | 0.1064 | 0.1064 | 0.1059 | +0.0006 |
+| w3-truncate | 0.9101 | 0.9101 | 0.9102 | −0.0001 |
+| w3-tools-rotate | 0.1078 | 0.8657 | 0.3150 | 实测在估计与上界之间 |
+| w4-c2 | 0.9633 | 0.9633 | 0.9626 | +0.0007 |
+| w4-c4 / w4-c8 / w4-c4-timestamp | 0.9633 / 0.9633 / 0.1064 | — | 0.7520 / 0.5309 / 0.0981 | 并发差额，估计器按 c=1 |
+
+timestamp 组的 prompt token 增量估计 +20,925，与实测 +20,925 逐 token 相等。W1 的字符级估计（`profile.py`，messages JSON 的 LCP）偏 1.7 个点，本估计器偏 ≤ 0.07 个点。
+
+**为什么**：findings §6 已把「tokenize + LCP 守第一道门」写成结论，但仓库里只有字符级版本，且它看不见 chat template 把 tools 渲染在 system 段内这类细节。有了逐 token 精确的第一道门，任何 harness 侧改写都能先在本地拿到命中率预测再决定是否花 GPU（W5 各组的预测见 `experiments/w5-*/estimate.md`）。
+
+**适用边界**：
+- 只估计命中率，不估计 TTFT / 单轮延迟；不建模驱逐与并发（w4-c4/c8 的差额就是并发代价，只能上 GPU）。
+- 有周期的改写（tools_rotate）会重新命中更早的分支，实测落在「上一请求」估计与「任意更早请求」上界之间，估计器只给区间。
+- 估计的 Σprompt 比实测少 ~0.5%：合成 compaction 请求的长度按录制 usage 合成，与服务端实际分词有偏差；不影响命中率的对照。
+
+**影响**：`just estimate EXP [CTL]`；`analysis/estimate.py` 的口径改动需在此追加记录并重跑全部 `estimate.json`。
+
+## 2026-09-21 · W5 规划：头条 remedy 的可执行形式、并发下的验证、LPM 饥饿的对照
+
+**决定**：新增八个实验目录（`experiments/w5-*`），分三批，每批自带重跑的控制组，GPU 时间按已有 run 的 wall 估计：
+
+| 批 | 实验 | 只动的变量 | 检验 | 预测 | GPU |
+|---|---|---|---|---|---|
+| 1（c1 / compressed） | `w5-control`、`w5-tail`、可选 `w5-after-tools` | transform | 头条 D 的可执行形式：时间戳信息不变、位置从 system prompt 末尾移到 messages 末尾（每轮替换） | 命中 0.9620（estimate）；after_tools 0.1406 | ~8 h（+3.9 h 可选） |
+| 2（c4 / real） | `w5-c4`、`w5-c4-tail`、`w5-c4-truncate` | transform | tail 在并发下是否仍无代价（预期 Δ ≤ 噪声，按 §9 记为等价性结论）；缩 29% 上下文能否把 c4 推回悬崖之内（结果不可预知） | tail ≈ 0.752；truncate 0.75–0.91 | ~7 h |
+| 3（c8 / real） | `w5-c8-lpm`、`w5-c8-fcfs` | server `--schedule-policy`（指纹 `serve_args`，config 逐字节相同） | findings 7「LPM 饥饿回路」由推断变数据：fcfs（sglang 0.5.20 出厂默认）是否消除 ≥ 600 s 成对超时、代价多少命中率 | 超时消失、命中率下降 | ~5.5 h |
+
+**为什么每批重跑控制组**：replayer commit 已过 `d77ffcc`（删失聚合、resummarize、transforms 新位置），`analysis/report` 的 `env_key` 含 replayer commit，新 run 与 W3/W4 老 run 不得同表（§8.3）。`d77ffcc..HEAD` 的 `replay/` diff 不碰请求路径，但按 commit 判、不按判断；顺带验证新 server session 能否复现 0.9633 / 0.752。头条句引用两张表（W3 的 control→head、W5 的 control→tail），各自对照自己的控制组，head 与 tail 不进同一张表。
+
+**tail 的形态**：主跑 `position: tail`（每轮替换，ephemeral reminder），不是 `tail_append`（持久化在历史里）——前者与 head 的 prompt token 逐请求几乎相等（+29 vs +25 tok），是更干净的单变量对照；`tail_append` 会让 prompt 多 2.9% 且旧戳计入分子。措辞用「前缀保持」，不用「append-only」硬套。
+
+**server 端变量的工具支持**：`analysis/report.py` 把指纹 `serve.serve_args` 解析成 `serve.<flag>` 变量：同一实验内各 run 必须一致；对照时与 config 差异一起计数，恰好一个可下结论，零个打「同配置重跑」，`--host/--port` 忽略。此前 compare 对 fcfs 这类实验会报「零差异」。
+
+**不做**：`--mem-fraction-static`/`--max-total-tokens` 缩池子——池子下限受最长请求约束（重放侧 max prompt 52,715 + 输出 4,339 ≈ 53.4k，sglang `max_req_len = min(context_len−1, max_total_num_tokens−1)`），可行的最小池子 ≈ 54–56k 恰在 c2 同飞和（45.5–55.4k）的边界上，效应小且解释力弱；`--kv-cache-dtype fp8_e5m2`（池子 ≈ 157k）先需 ~10 分钟开卡验证 4090 兼容，且 dtype 改变 attention kernel、延迟不与 bf16 同表，只比缓存类指标需 ~5 h、全套 ~23 h，列为可砍；并发 c16 与换卡不做（c8 已删失、换环境基线作废）。
+
+**影响**：GPU 前的准备已全部完成（transform 位置、report 工具、configs、dry-run、estimate）；开卡按批向人确认。批 3 需要用 `SCHEDULE_POLICY=fcfs bash scripts/serve.sh` 重启服务，与 lpm 组不能放在同一个 run-batch。

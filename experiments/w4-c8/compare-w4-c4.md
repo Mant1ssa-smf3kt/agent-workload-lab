@@ -1,6 +1,6 @@
 # w4-c8 vs w4-c4
 
-配置差异：
+配置差异（含 server 启动参数 `serve.*`）：
 - `replay.concurrency`: 8 → 4
 
 | 指标 | w4-c8 (n=3) | w4-c4 (n=3) | Δ (A − B) | Δ / 噪声 |

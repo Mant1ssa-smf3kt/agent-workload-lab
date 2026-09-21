@@ -75,6 +75,65 @@ def test_system_timestamp_differs_per_step_and_is_deterministic() -> None:
     assert steps[0].payload["messages"][0] == SYS
 
 
+def test_system_timestamp_tail_keeps_history_byte_identical() -> None:
+    steps = make_steps(4)
+    out = system_timestamp(steps, {"position": "tail"})
+    for s, o in zip(steps, out, strict=True):
+        msgs = o.payload["messages"]
+        assert msgs[:-1] == s.payload["messages"]  # everything before the stamp is what pi sent
+        assert msgs[-1]["role"] == "user" and msgs[-1]["content"].startswith("Current time: ")
+        assert o.payload["tools"] == s.payload["tools"]
+    assert len({o.payload["messages"][-1]["content"] for o in out}) == 4  # still differs per request
+    # step k's history is a prefix of step k+1's, so the stamp is the only per-request difference
+    assert out[2].payload["messages"][:-1] == steps[2].payload["messages"]
+
+
+def append_only_steps(n: int) -> list[Step]:
+    """Like make_steps but strictly append-only (no trailing user turn re-inserted), the shape of
+    a recorded tool-call loop."""
+    steps = []
+    for k in range(n):
+        msgs: list[dict[str, Any]] = [SYS, U0]
+        for i in range(k):
+            msgs += [A0, long_tool(i)]
+        steps.append(Step("t", k, "request", 0, k, k, 0, {"messages": copy.deepcopy(msgs)}, REC))
+    return steps
+
+
+def test_system_timestamp_tail_append_keeps_earlier_stamps_in_place() -> None:
+    steps = append_only_steps(3)
+    out = system_timestamp(steps, {"position": "tail_append"})
+    stamps = [system_timestamp(steps, {"position": "tail"})[k].payload["messages"][-1] for k in range(3)]
+    m0, m1, m2 = (o.payload["messages"] for o in out)
+    n0, n1 = len(steps[0].payload["messages"]), len(steps[1].payload["messages"])
+    assert m0 == [*steps[0].payload["messages"], stamps[0]]
+    # step 1: stamp 0 sits right after step 0's messages, own stamp at the end
+    assert m1[:n0] == steps[0].payload["messages"] and m1[n0] == stamps[0] and m1[-1] == stamps[1]
+    assert m1[n0 + 1 : -1] == steps[1].payload["messages"][n0:]
+    # step 2 extends step 1's full prompt: literally append-only
+    assert m2[: len(m1)] == m1 and m2[-1] == stamps[2]
+    assert m2[len(m1) : -1] == steps[2].payload["messages"][n1:]
+    assert steps[1].payload["messages"][0] == SYS  # inputs not mutated
+    # a history that is not an extension of an earlier request (compaction) gets no old stamps
+    fresh = Step("t", 3, "request", 0, 3, 3, 0, {"messages": [SYS, U1]}, REC)
+    m3 = system_timestamp([*steps, fresh], {"position": "tail_append"})[3].payload["messages"]
+    assert m3[:2] == [SYS, U1] and len(m3) == 3 and m3[2]["role"] == "user"
+
+
+def test_system_timestamp_after_tools_is_a_second_system_message() -> None:
+    steps = make_steps(2)
+    out = system_timestamp(steps, {"position": "after_tools"})
+    for s, o in zip(steps, out, strict=True):
+        msgs = o.payload["messages"]
+        assert msgs[0] == SYS and msgs[1]["role"] == "system" and "Current time: " in msgs[1]["content"]
+        assert msgs[2:] == s.payload["messages"][1:]
+
+
+def test_system_timestamp_rejects_unknown_position() -> None:
+    with pytest.raises(ValueError, match="position"):
+        system_timestamp(make_steps(1), {"position": "middle"})
+
+
 def test_system_timestamp_without_system_message_inserts_one() -> None:
     s = Step("t", 0, "request", 0, 0, 0, 0, {"messages": [U0]}, REC)
     out = system_timestamp([s], {})

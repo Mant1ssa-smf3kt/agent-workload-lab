@@ -1,0 +1,28 @@
+# W5 批 1 改写：同一条 system_timestamp，位置从 system prompt 末尾（w3-timestamp）改到 messages 末尾（每轮替换）。
+# 与 w5-control 只差 transform。头条 remedy 的可执行形式：不是「别给模型时间」，是「别放在前缀里」。
+# 预测（analysis/estimate，真模板 + 真 tokenizer）：命中 0.9620 vs control 0.9633，prompt 每请求 +29 tok；见 estimate.md。
+name: w5-tail
+notes: W5 批 1 改写组 system_timestamp@tail。与 w5-control 只差 transform。
+traces:
+  dir: traces
+  include: "*.jsonl"
+  min_requests: 1
+  order: sorted
+server:
+  base_url: http://127.0.0.1:30000/v1
+  model: Qwen/Qwen3-8B-FP8
+  metrics_url: http://127.0.0.1:30000/metrics
+replay:
+  concurrency: 1
+  timing: compressed   # 单并发无驱逐压力，间隔期间服务器空闲；命中率与 TTFT 与 real 一致，省 ~30% 机时（decisions 2026-09-19）
+  gap_scale: 1.0
+  max_gap_s: 30        # compressed 下不生效，保留以便切回 real
+  output_mode: recorded
+  ignore_eos: true
+  compaction: synthesize
+  warmup_requests: 2
+transform:
+  name: system_timestamp
+  params:
+    position: tail   # 同一条时间戳，作为 messages 末尾一条 user 消息、每轮替换；system/tools/历史逐字节不变
+fingerprint: /root/autodl-tmp/fingerprints/serve-latest.json

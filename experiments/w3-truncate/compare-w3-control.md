@@ -1,6 +1,6 @@
 # w3-truncate vs w3-control
 
-配置差异：
+配置差异（含 server 启动参数 `serve.*`）：
 - `transform`: {"name": "truncate_tool_results", "params": {"keep_recent": 4, "max_chars": 800}} → {"name": "identity", "params": {}}
 
 | 指标 | w3-truncate (n=3) | w3-control (n=3) | Δ (A − B) | Δ / 噪声 |
@@ -16,6 +16,7 @@
 | prompt tokens total | 13776632 ± 0 | 19472018 ± 0 | -5695386 (-29.2%) | ∞（零噪声） |
 | requests | 837 ± 0 | 837 ± 0 | 0 (+0.0%) | — |
 | errors | 0 ± 0 | 0 ± 0 | 0 | — |
+| timeouts (censored) | — | — | — | — |
 | wall | 4412.6 s ± 0.2 s | 4623.6 s ± 2.5 s | -211.0 s (-4.6%) | 84.4× |
 
 Δ = w3-truncate − w3-control（实验组 − 对照组），百分比相对对照组。Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。

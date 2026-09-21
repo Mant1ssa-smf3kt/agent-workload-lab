@@ -1,7 +1,7 @@
 # w3-truncate · 方差
 
 环境：GPU NVIDIA GeForce RTX 4090 · sglang 0.5.20 · model Qwen/Qwen3-8B-FP8 · pi 0.85.1 · replayer 2ce925b8
-配置：timing=compressed · concurrency=1 · transform=truncate_tool_results · traces=25
+配置：timing=compressed · concurrency=1 · transform=truncate_tool_results · traces=25 · timeout_s=600
 
 | 指标 | 20260920T015916 | 20260920T031252 | 20260920T042627 | mean ± std | min – max | CV |
 |---|---|---|---|---|---|---|
@@ -16,6 +16,7 @@
 | prompt tokens total | 13776632 | 13776632 | 13776632 | 13776632 ± 0 | 13776632 – 13776632 | 0.0% |
 | requests | 837 | 837 | 837 | 837 ± 0 | 837 – 837 | 0.0% |
 | errors | 0 | 0 | 0 | 0 ± 0 | 0 – 0 | — |
+| timeouts (censored) | — | — | — | — | — | — |
 | wall | 4412.5 s | 4412.5 s | 4412.9 s | 4412.6 s ± 0.2 s | 4412.5 s – 4412.9 s | 0.0% |
 
 **判定**：3 次以上同配置重跑，指纹一致，无错误；可用于对照。

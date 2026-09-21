@@ -54,6 +54,11 @@ resummarize +EXPS:
 plot OUT="docs/figures":
     uv run python -m analysis.plot --out "{{OUT}}"
 
+# 第一道门（无 GPU）：真 chat template + 真 tokenizer 估计单租户命中率 → experiments/EXP/estimate.{json,md}
+# AGAINST 为对照实验名（可选，加 Δ 行与配置差异）。首次运行从 ModelScope 拉 tokenizer（11 MB）到 ~/.cache/agent-workload-lab/
+estimate EXP AGAINST="":
+    uv run python -m analysis.estimate "experiments/{{EXP}}/config.yaml" {{ if AGAINST != "" { "--against experiments/" + AGAINST + "/config.yaml" } else { "" } }}
+
 # 无卡即可：不连推理服务，只构建计划（payload 归一化、间隔、合成 compaction）→ experiments/EXP/out/<ts>-dry/
 replay-dry EXP:
     uv run python -m replay.run "experiments/{{EXP}}/config.yaml" --dry-run

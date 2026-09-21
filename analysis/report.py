@@ -7,7 +7,9 @@ Two jobs, both enforcing CLAUDE.md §9:
    fingerprints disagree (GPU / sglang / model / replayer commit), and the verdict says so.
 2. **Compare** — ``--against OTHER`` puts two experiments side by side: EXP is the treatment,
    OTHER the control, so Δ = EXP − OTHER and the percentage is relative to OTHER. Refused when
-   their fingerprints differ (§8.3) and flagged when their configs differ in more than one key.
+   their fingerprints differ (§8.3) and flagged when they differ in more than one variable. A
+   variable is a config key *or* a server launch flag (``serve.serve_args`` in the fingerprint):
+   ``--schedule-policy fcfs`` vs ``lpm`` with byte-identical configs is one variable, not a rerun.
 
     uv run python -m analysis.report baseline-c1
     uv run python -m analysis.report baseline-c1 --against baseline-c4
@@ -31,6 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Fields that make two runs "the same environment". Differ → not one table.
 FINGERPRINT_KEYS = ("gpu", "sglang_version", "model", "pi_versions", "extension_versions")
 
+# Launch flags that never count as a variable (where the server listened).
+SERVE_ARGS_IGNORE = {"--host", "--port"}
+
 # Config keys allowed to differ between compared experiments without a warning.
 CONFIG_IGNORE = {"name", "notes", "out"}
 
@@ -49,10 +54,43 @@ class Run:
         commit = (self.fingerprint.get("replayer") or {}).get("commit")
         return commit if isinstance(commit, str) else None
 
-    def env_key(self) -> dict[str, Any]:
-        return {k: self.fingerprint.get(k) for k in FINGERPRINT_KEYS} | {
+    @property
+    def serve_args(self) -> dict[str, Any]:
+        serve = self.fingerprint.get("serve")
+        args = serve.get("serve_args") if isinstance(serve, dict) else None
+        return serve_args_map(args) if isinstance(args, list) else {}
+
+    def env_key(self, *, include_serve: bool = True) -> dict[str, Any]:
+        key = {k: self.fingerprint.get(k) for k in FINGERPRINT_KEYS} | {
             "replayer_commit": self.replayer_commit
         }
+        if include_serve:
+            key["serve_args"] = self.serve_args
+        return key
+
+
+def serve_args_map(args: list[Any]) -> dict[str, Any]:
+    """``["--mem-fraction-static", "0.85", "--enable-metrics", …]`` → ``{flag: value | True}``.
+    A value is the token after a flag unless that token is itself a flag."""
+    out: dict[str, Any] = {}
+    i = 0
+    while i < len(args):
+        tok = str(args[i])
+        if not tok.startswith("--"):
+            i += 1
+            continue
+        nxt = args[i + 1] if i + 1 < len(args) else None
+        has_value = nxt is not None and not str(nxt).startswith("--")
+        if tok not in SERVE_ARGS_IGNORE:
+            out[tok] = str(nxt) if has_value else True
+        i += 2 if has_value else 1
+    return out
+
+
+def serve_args_diff(a: Run, b: Run) -> list[tuple[str, Any, Any]]:
+    """Launch flags that differ between two runs, as ``serve.<flag>`` variables."""
+    fa, fb = a.serve_args, b.serve_args
+    return [(f"serve.{k}", fa.get(k), fb.get(k)) for k in sorted(set(fa) | set(fb)) if fa.get(k) != fb.get(k)]
 
 
 def load_runs(exp_dir: Path) -> list[Run]:
@@ -164,13 +202,16 @@ def spread(values: list[float | None]) -> Spread:
 # ── checks ────────────────────────────────────────────────────────────────
 
 
-def env_consistent(runs: list[Run]) -> tuple[bool, list[str]]:
+def env_consistent(runs: list[Run], *, include_serve: bool = True) -> tuple[bool, list[str]]:
+    """Same environment across ``runs``. Launch flags are part of it within one experiment; across
+    two compared experiments they may be the one variable, so ``render_compare`` checks them
+    separately (``include_serve=False`` here, ``serve_args_diff`` there)."""
     if not runs:
         return True, []
-    base = runs[0].env_key()
+    base = runs[0].env_key(include_serve=include_serve)
     problems: list[str] = []
     for r in runs[1:]:
-        for k, v in r.env_key().items():
+        for k, v in r.env_key(include_serve=include_serve).items():
             if v != base.get(k):
                 got, want = json.dumps(v, ensure_ascii=False), json.dumps(base.get(k), ensure_ascii=False)
                 problems.append(f"{r.run_id}: {k} = {got} ≠ {want}")
@@ -284,13 +325,19 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
     if not a or not b:
         L.append("其中一方没有完成的 run。")
         return "\n".join(L) + "\n"
-    ok, problems = env_consistent([*a, *b])
+    # Within each group everything (launch flags included) must match; across the two groups the
+    # launch flags may be the one variable, so they are diffed like config keys instead.
+    ok_a, problems_a = env_consistent(a)
+    ok_b, problems_b = env_consistent(b)
+    ok_ab, problems_ab = env_consistent([*a, *b], include_serve=False)
+    ok = ok_a and ok_b and ok_ab
+    problems = [*problems_a, *problems_b, *problems_ab]
     if not ok:
         L.append("> **两组指纹不一致，不得对照（CLAUDE.md §8.3）：**")
         L.extend(f"> - {p}" for p in problems)
         L.append("")
-    diffs = config_diff(a[0].config, b[0].config)
-    L.append("配置差异：")
+    diffs = config_diff(a[0].config, b[0].config) + serve_args_diff(a[0], b[0])
+    L.append("配置差异（含 server 启动参数 `serve.*`）：")
     if not diffs:
         L.append("- （无）— 这是同配置重跑，不是对照")
     for k, va, vb in diffs:
