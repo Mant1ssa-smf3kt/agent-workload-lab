@@ -22,13 +22,14 @@ def make_run(
     hit: float,
     ttft_p95: float,
     errors: int = 0,
+    timeouts: int = 0,
     gpu: str = "RTX 4090",
     commit: str = "abc",
     config: dict[str, Any] | None = None,
 ) -> Path:
     d = exp_dir / "out" / run_id
     d.mkdir(parents=True)
-    summary = {
+    summary: dict[str, Any] = {
         "n_errors": errors,
         "wall_s": 100.0,
         "all": {
@@ -40,6 +41,10 @@ def make_run(
         },
         "excluding_synthetic": {"cache_hit_rate": hit + 0.001},
     }
+    if timeouts:
+        summary["n_timeouts"] = timeouts
+        summary["all"]["n_censored"] = timeouts  # a count next to "n", must not read as a ≥ flag
+        summary["all"]["latency_ms"] = {"p50": 1000.0, "p95": 3000.0, "p99": 600_000.0, "p99_censored": True}
     fp = {
         "gpu": {"name": gpu, "driver": "580"},
         "sglang_version": "0.5.20",
@@ -100,6 +105,29 @@ def test_variance_report_verdicts(tmp_path: Path) -> None:
     assert "没有完成的 run" in render_variance("x", [])
 
 
+def test_variance_report_marks_censored_tail(tmp_path: Path) -> None:
+    exp = tmp_path / "w4-c8"
+    make_run(exp, "r1", hit=0.5, ttft_p95=500, config={"server": {"timeout_s": 600.0}})
+    make_run(exp, "r2", hit=0.5, ttft_p95=500, errors=3, timeouts=3, config={"server": {"timeout_s": 600.0}})
+    make_run(exp, "r3", hit=0.5, ttft_p95=500, errors=4, timeouts=3, config={"server": {"timeout_s": 600.0}})
+    md = render_variance("w4-c8", load_runs(exp))
+    assert "timeout_s=600" in md
+    assert "| latency P99 | 4000 ms | ≥ 600000 ms | ≥ 600000 ms | ≥ 401333 ms ± 344101 ms |" in md
+    assert "| ≥ 4000 ms – ≥ 600000 ms |" in md
+    assert "| latency P95 | 3000 ms | 3000 ms | 3000 ms |" in md
+    assert "| timeouts (censored) | — | 3 | 3 |" in md
+    assert "| requests | 173 | 173 | 173 |" in md
+    assert "`≥`：该分位落在超时请求上" in md
+    # one non-timeout error still blocks; the timeouts are only a note
+    assert "共 1 个请求出错（非超时）" in md and "6 个请求超时" in md and "可用于对照" not in md
+
+    exp2 = tmp_path / "w4-c8b"
+    for i in range(3):
+        make_run(exp2, f"r{i}", hit=0.5, ttft_p95=500, errors=2, timeouts=2)
+    md = render_variance("w4-c8b", load_runs(exp2))
+    assert "6 个请求超时" in md and "可用于对照" in md and "无错误" not in md
+
+
 def test_env_consistent_and_config_diff(tmp_path: Path) -> None:
     exp = tmp_path / "e"
     make_run(exp, "r1", hit=0.9, ttft_p95=1)
@@ -150,6 +178,19 @@ def test_compare_report(tmp_path: Path) -> None:
     assert "两组指纹不一致" in md and "指纹不一致" in md.split("**判定**")[1]
 
     assert "没有完成的 run" in render_compare("A", load_runs(a), "E", [])
+
+    # censored tail on one side → that cell and Δ carry a one-sided bound
+    t = tmp_path / "T"
+    for i in range(3):
+        make_run(
+            t, f"r{i}", hit=0.5, ttft_p95=500, errors=1, timeouts=1, config={"replay": {"concurrency": 8}}
+        )
+    md = render_compare("T", load_runs(t), "A", load_runs(a))
+    assert "| latency P99 | ≥ 600000 ms ± 0 ms | 4000 ms ± 0 ms | ≥ 596000 ms (+14900.0%) |" in md
+    assert "| timeouts (censored) | 1 | — | — | — |" in md
+    assert "两侧都是下界时 Δ 不定" in md
+    md = render_compare("A", load_runs(a), "T", load_runs(t))
+    assert "| latency P99 | 4000 ms ± 0 ms | ≥ 600000 ms ± 0 ms | ≤ -596000 ms (-99.3%) |" in md
 
 
 def test_main_writes_files(tmp_path: Path) -> None:

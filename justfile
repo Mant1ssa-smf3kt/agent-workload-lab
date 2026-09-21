@@ -46,6 +46,10 @@ report EXP:
 compare EXP OTHER:
     uv run python -m analysis.report "{{EXP}}" --against "{{OTHER}}"
 
+# summary 口径变了（docs/decisions.md）时，从 requests.jsonl 重算已完成 run 的 summary.json（旧的留作 summary.prev.json）
+resummarize +EXPS:
+    uv run python -m replay.resummarize {{EXPS}}
+
 # 无卡即可：不连推理服务，只构建计划（payload 归一化、间隔、合成 compaction）→ experiments/EXP/out/<ts>-dry/
 replay-dry EXP:
     uv run python -m replay.run "experiments/{{EXP}}/config.yaml" --dry-run

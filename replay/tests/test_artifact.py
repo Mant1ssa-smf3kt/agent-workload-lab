@@ -75,6 +75,41 @@ def test_summary_cache_hit_is_sum_ratio_not_mean_of_ratios() -> None:
     assert s["metrics_before"]["sglang:cache_hit_rate"] is None
 
 
+def test_summary_timeouts_are_right_censored_not_dropped() -> None:
+    stats = RunStats(started_epoch=0.0, finished_epoch=10.0)
+    ok = [sr("a", i, 100, 90, 100.0 + i) for i in range(9)]  # latency 200..216
+    stalled = sr("a", 9, 0, 0, 0.0, error="ReadTimeout: ")
+    stalled.result.ttft_ms = None
+    stalled.result.ttfb_ms = None
+    stalled.result.prompt_tokens = None
+    stalled.result.cached_tokens = None
+    stalled.result.latency_ms = 600_000.0
+    failed = sr("b", 0, 100, 0, 5.0, error="HTTP 500")
+    stats.results = [*ok, stalled, failed]
+    cfg = Config(name="x")
+    s = summarize(stats, cfg, None, None)
+
+    assert s["n_errors"] == 2 and s["n_timeouts"] == 1 and s["timeout_s"] == cfg.server.timeout_s
+    a = s["all"]
+    # HTTP 500 is a failure, not a latency observation; the stall is a lower bound on the tail
+    assert a["n"] == 9 and a["n_censored"] == 1 and a["n_with_usage"] == 9
+    assert a["latency_ms"]["n"] == 10 and a["latency_ms"]["p99"] == 600_000.0
+    assert a["latency_ms"]["p99_censored"] and not a["latency_ms"]["p50_censored"]
+    assert a["ttft_ms"]["p99"] == 600_000.0 and a["ttft_ms"]["p99_censored"]
+    assert a["ttfb_ms"]["p99"] == 600_000.0 and a["ttfb_ms"]["p99_censored"]
+    # §5 hit rate stays over requests with usage only
+    assert abs(a["cache_hit_rate"] - 0.9) < 1e-9
+    assert s["per_trajectory"]["a"]["n_censored"] == 1 and "b" not in s["per_trajectory"]
+
+    # a stall after the first token keeps ttft exact and censors only latency
+    late = sr("a", 10, 0, 0, 50.0, error="ReadTimeout: ")
+    late.result.latency_ms = 600_000.0
+    stats.results = [*ok, late]
+    a = summarize(stats, cfg, None, None)["all"]
+    assert a["ttft_ms"]["max"] == 108.0 and not a["ttft_ms"]["p99_censored"]
+    assert a["latency_ms"]["p99"] == 600_000.0 and a["latency_ms"]["p99_censored"]
+
+
 def test_summary_with_metrics_and_no_usage() -> None:
     stats = RunStats(started_epoch=0.0, finished_epoch=1.0)
     r = sr("a", 0, 0, 0, 1.0)

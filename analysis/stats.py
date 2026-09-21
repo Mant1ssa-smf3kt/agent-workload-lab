@@ -39,6 +39,55 @@ def pct(values: Iterable[float | int | None]) -> Pct:
     }
 
 
+class CensoredPct(Pct):
+    n_censored: int
+    p50_censored: bool
+    p95_censored: bool
+    p99_censored: bool
+    max_censored: bool
+
+
+def pct_censored(values: Iterable[tuple[float | int | None, bool]]) -> CensoredPct:
+    """Like ``pct`` but each value carries a right-censored flag (true value ≥ the recorded one,
+    e.g. a request the client gave up on at ``timeout_s``). Censored values are ranked at their
+    bound; a percentile is flagged when any censored value sits at or below its rank, so the
+    reported number is a lower bound rather than an underestimate from dropping the tail."""
+    xs = sorted(((float(v), c) for v, c in values if v is not None), key=lambda t: t[0])
+    if not xs:
+        return {
+            "n": 0,
+            "p50": None,
+            "p95": None,
+            "p99": None,
+            "min": None,
+            "max": None,
+            "n_censored": 0,
+            "p50_censored": False,
+            "p95_censored": False,
+            "p99_censored": False,
+            "max_censored": False,
+        }
+    vals = [v for v, _ in xs]
+
+    def bound(p: float) -> bool:
+        k = max(1, math.ceil(p / 100 * len(xs)))
+        return any(c for _, c in xs[:k])
+
+    return {
+        "n": len(xs),
+        "p50": percentile(vals, 50),
+        "p95": percentile(vals, 95),
+        "p99": percentile(vals, 99),
+        "min": vals[0],
+        "max": vals[-1],
+        "n_censored": sum(1 for _, c in xs if c),
+        "p50_censored": bound(50),
+        "p95_censored": bound(95),
+        "p99_censored": bound(99),
+        "max_censored": xs[-1][1],
+    }
+
+
 def fmt_pct(p: Pct, unit: str = "", digits: int = 0) -> str:
     """``p50 / p95 / p99 (n)`` for tables; ``—`` when empty."""
     if p["n"] == 0:

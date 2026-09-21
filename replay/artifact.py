@@ -24,8 +24,9 @@ from typing import Any
 import httpx
 import yaml
 
-from analysis.stats import pct
+from analysis.stats import pct, pct_censored
 from metrics.sglang import key_metrics
+from replay.client import RequestResult
 from replay.config import Config
 from replay.scheduler import RunStats, StepResult
 from replay.trajectory import Trajectory
@@ -141,24 +142,45 @@ def build_plan(trajectories: list[Trajectory], cfg: Config) -> dict[str, Any]:
     }
 
 
-def _agg(rs: list[StepResult]) -> dict[str, Any]:
+# Client-side stalls: the request was still queued/streaming when we gave up at timeout_s, so its
+# TTFT/latency are unknown but ≥ the time we waited. Kept in the tail as right-censored bounds.
+CENSORING_ERRORS = ("ReadTimeout", "WriteTimeout")
+
+
+def is_timeout(res: RequestResult) -> bool:
+    return res.error is not None and res.error.split(":", 1)[0] in CENSORING_ERRORS
+
+
+def _agg(rs: list[StepResult], timed_out: list[StepResult]) -> dict[str, Any]:
     with_usage = [r for r in rs if r.result.prompt_tokens is not None]
     prompt = sum(r.result.prompt_tokens or 0 for r in with_usage)
     cached = sum(r.result.cached_tokens or 0 for r in with_usage)
     ratios = [
         (r.result.cached_tokens or 0) / r.result.prompt_tokens for r in with_usage if r.result.prompt_tokens
     ]
+
+    def censored(attr: str) -> list[tuple[float | None, bool]]:
+        pairs: list[tuple[float | None, bool]] = [(getattr(r.result, attr), False) for r in rs]
+        for r in timed_out:
+            v = getattr(r.result, attr)
+            # a stall after the first token leaves ttfb/ttft exact and only latency censored
+            pairs.append(
+                (v, False) if v is not None and attr != "latency_ms" else (r.result.latency_ms, True)
+            )
+        return pairs
+
     return {
         "n": len(rs),
         "n_with_usage": len(with_usage),
+        "n_censored": len(timed_out),
         "prompt_tokens_total": prompt,
         "cached_tokens_total": cached,
         # CLAUDE.md §5: hit prefill tokens / total prefill tokens, aggregated over requests.
         "cache_hit_rate": (cached / prompt) if prompt else None,
         "cache_hit_per_request": pct(ratios),
-        "ttfb_ms": pct(r.result.ttfb_ms for r in rs),
-        "ttft_ms": pct(r.result.ttft_ms for r in rs),
-        "latency_ms": pct(r.result.latency_ms for r in rs),
+        "ttfb_ms": pct_censored(censored("ttfb_ms")),
+        "ttft_ms": pct_censored(censored("ttft_ms")),
+        "latency_ms": pct_censored(censored("latency_ms")),
         "prompt_tokens": pct(r.result.prompt_tokens for r in rs),
         "completion_tokens": pct(r.result.completion_tokens for r in rs),
         "gap_actual_ms": pct(r.gap_actual_ms for r in rs if r.idx > 0),
@@ -174,22 +196,28 @@ def summarize(
     measured = [r for r in stats.results if not r.warmup]
     ok = [r for r in measured if r.result.error is None]
     errors = [r for r in measured if r.result.error is not None]
+    timed_out = [r for r in errors if is_timeout(r.result)]
     real = [r for r in ok if not r.synthetic]
+    real_timed_out = [r for r in timed_out if not r.synthetic]
     per_traj: dict[str, dict[str, Any]] = {}
-    for tid in sorted({r.trajectory for r in ok}):
-        per_traj[tid] = _agg([r for r in ok if r.trajectory == tid])
+    for tid in sorted({r.trajectory for r in [*ok, *timed_out]}):
+        per_traj[tid] = _agg(
+            [r for r in ok if r.trajectory == tid], [r for r in timed_out if r.trajectory == tid]
+        )
     return {
         "name": cfg.name,
         "timing": cfg.replay.timing,
         "concurrency": cfg.replay.concurrency,
         "transform": cfg.transform.name,
+        "timeout_s": cfg.server.timeout_s,
         "wall_s": None if stats.finished_epoch is None else stats.finished_epoch - stats.started_epoch,
         "n_results": len(stats.results),
         "n_warmup": len(stats.results) - len(measured),
         "n_errors": len(errors),
+        "n_timeouts": len(timed_out),
         "error_samples": [r.result.error for r in errors[:5]],
-        "all": _agg(ok),
-        "excluding_synthetic": _agg(real),
+        "all": _agg(ok, timed_out),
+        "excluding_synthetic": _agg(real, real_timed_out),
         "per_trajectory": per_traj,
         "metrics_before": key_metrics((metrics_before or {}).get("metrics", {})),
         "metrics_after": key_metrics((metrics_after or {}).get("metrics", {})),

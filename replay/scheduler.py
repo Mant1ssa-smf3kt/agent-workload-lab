@@ -45,6 +45,12 @@ class StepResult:
         d.update({f"res_{k}": v for k, v in self.result.to_dict().items()})
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> StepResult:
+        result = RequestResult(**{k[4:]: v for k, v in d.items() if k.startswith("res_")})
+        own = {k: d[k] for k in cls.__dataclass_fields__ if k != "result"}
+        return cls(**own, result=result)
+
 
 @dataclass
 class RunStats:

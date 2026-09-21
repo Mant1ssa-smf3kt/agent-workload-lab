@@ -101,6 +101,7 @@ KEY_NUMBERS: tuple[tuple[str, tuple[str, ...], str, int], ...] = (
     ("prompt tokens total", ("all", "prompt_tokens_total"), "", 0),
     ("requests", ("all", "n"), "", 0),
     ("errors", ("n_errors",), "", 0),
+    ("timeouts (censored)", ("n_timeouts",), "", 0),
     ("wall", ("wall_s",), " s", 1),
 )
 
@@ -114,8 +115,22 @@ def dig(d: dict[str, Any], path: tuple[str, ...]) -> float | None:
     return float(cur) if isinstance(cur, int | float) else None
 
 
-def fmt(v: float | None, unit: str, digits: int) -> str:
-    return "—" if v is None else f"{v:.{digits}f}{unit}"
+def censored(d: dict[str, Any], path: tuple[str, ...]) -> bool:
+    """True when the percentile at ``path`` is only a lower bound (a timed-out request sits at or
+    below its rank; see ``analysis.stats.pct_censored``). Only a bool flag counts — ``n_censored``
+    next to ``n`` is a count, not a flag."""
+    cur: Any = d
+    for k in (*path[:-1], path[-1] + "_censored"):
+        if not isinstance(cur, dict) or k not in cur:
+            return False
+        cur = cur[k]
+    return cur is True
+
+
+def fmt(v: float | None, unit: str, digits: int, lower_bound: bool = False) -> str:
+    if v is None:
+        return "—"
+    return ("≥ " if lower_bound else "") + f"{v:.{digits}f}{unit}"
 
 
 # std 低于均值的这个比例视为零噪声（同配置重跑得到逐字节相同的结果时只剩浮点累加误差）
@@ -206,9 +221,11 @@ def render_variance(exp: str, runs: list[Run]) -> str:
         f"pi {', '.join(fp.get('pi_versions') or []) or 'TBD'} · replayer {(r0.replayer_commit or 'TBD')[:8]}"
     )
     cfg = r0.config.get("replay", {})
+    timeout_s = r0.config.get("server", {}).get("timeout_s")
     L.append(
         f"配置：timing={cfg.get('timing')} · concurrency={cfg.get('concurrency')} · "
         f"transform={r0.config.get('transform', {}).get('name')} · traces={len(fp.get('traces') or [])}"
+        + (f" · timeout_s={timeout_s:g}" if isinstance(timeout_s, int | float) else "")
     )
     L.append("")
     if not ok:
@@ -219,28 +236,45 @@ def render_variance(exp: str, runs: list[Run]) -> str:
     header = "| 指标 | " + " | ".join(r.run_id for r in runs) + " | mean ± std | min – max | CV |"
     L.append(header)
     L.append("|---|" + "---|" * len(runs) + "---|---|---|")
+    any_bound = False
     for label, path, unit, digits in KEY_NUMBERS:
         vals = [dig(r.summary, path) for r in runs]
+        bounds = [censored(r.summary, path) for r in runs]
+        any_bound |= any(bounds)
         sp = spread(vals)
-        cells = " | ".join(fmt(v, unit, digits) for v in vals)
-        ms = "—" if sp.mean is None else f"{fmt(sp.mean, unit, digits)} ± {fmt(sp.std, unit, digits)}"
-        rng = "—" if sp.lo is None else f"{fmt(sp.lo, unit, digits)} – {fmt(sp.hi, unit, digits)}"
+        cells = " | ".join(fmt(v, unit, digits, b) for v, b in zip(vals, bounds, strict=True))
+        lb = any(bounds)
+        ms = "—" if sp.mean is None else f"{fmt(sp.mean, unit, digits, lb)} ± {fmt(sp.std, unit, digits)}"
+        rng = "—" if sp.lo is None else f"{fmt(sp.lo, unit, digits, lb)} – {fmt(sp.hi, unit, digits, lb)}"
         cv = "—" if sp.cv is None else f"{sp.cv * 100:.1f}%"
         L.append(f"| {label} | {cells} | {ms} | {rng} | {cv} |")
     L.append("")
+    if any_bound:
+        L.append(
+            "`≥`：该分位落在超时请求上（客户端在 timeout_s 放弃等待，真实值只知 ≥ 该值），"
+            "按右删失计入，数字是下界而非剔除后的低估。"
+        )
+        L.append("")
 
-    verdict: list[str] = []
+    blocking: list[str] = []
     if len(runs) < 3:
-        verdict.append(f"只有 {len(runs)} 次 run，方差未确认（需要 ≥ 3 次同配置重跑）。")
+        blocking.append(f"只有 {len(runs)} 次 run，方差未确认（需要 ≥ 3 次同配置重跑）。")
     if not ok:
-        verdict.append("指纹不一致，本组无效。")
+        blocking.append("指纹不一致，本组无效。")
     errs = sum(int(dig(r.summary, ("n_errors",)) or 0) for r in runs)
-    if errs:
-        verdict.append(f"共 {errs} 个请求出错，先查 requests.jsonl 里的 res_error。")
-    L.append(
-        "**判定**："
-        + (" ".join(verdict) if verdict else "3 次以上同配置重跑，指纹一致，无错误；可用于对照。")
-    )
+    timeouts = sum(int(dig(r.summary, ("n_timeouts",)) or 0) for r in runs)
+    if errs - timeouts:
+        blocking.append(f"共 {errs - timeouts} 个请求出错（非超时），先查 requests.jsonl 里的 res_error。")
+    notes: list[str] = []
+    if timeouts:
+        notes.append(f"{timeouts} 个请求超时，已按右删失计入 TTFT/latency 分位（标 ≥ 的为下界）。")
+    if blocking:
+        L.append("**判定**：" + " ".join([*blocking, *notes]))
+    else:
+        L.append(
+            "**判定**：3 次以上同配置重跑，指纹一致，"
+            + ("无错误；可用于对照。" if not timeouts else " ".join(notes) + " 可用于对照。")
+        )
     L.append("")
     return "\n".join(L)
 
@@ -267,9 +301,12 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
     L.append("")
     L.append(f"| 指标 | {a_name} (n={len(a)}) | {b_name} (n={len(b)}) | Δ (A − B) | Δ / 噪声 |")
     L.append("|---|---|---|---|---|")
+    any_bound = False
     for label, path, unit, digits in KEY_NUMBERS:
         sa = spread([dig(r.summary, path) for r in a])
         sb = spread([dig(r.summary, path) for r in b])
+        la, lb = any(censored(r.summary, path) for r in a), any(censored(r.summary, path) for r in b)
+        any_bound |= la or lb
         if sa.mean is None or sb.mean is None:
             L.append(f"| {label} | {fmt(sa.mean, unit, digits)} | {fmt(sb.mean, unit, digits)} | — | — |")
             continue
@@ -282,14 +319,21 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
             ratio = "∞（零噪声）" if delta else "—"
         else:
             ratio = f"{abs(delta) / noise:.1f}×"
-        ca = f"{fmt(sa.mean, unit, digits)} ± {fmt(sa.std, unit, digits)}"
-        cb = f"{fmt(sb.mean, unit, digits)} ± {fmt(sb.std, unit, digits)}"
-        L.append(f"| {label} | {ca} | {cb} | {fmt(delta, unit, digits)}{rel} | {ratio} |")
+        ca = f"{fmt(sa.mean, unit, digits, la)} ± {fmt(sa.std, unit, digits)}"
+        cb = f"{fmt(sb.mean, unit, digits, lb)} ± {fmt(sb.std, unit, digits)}"
+        # 只有一侧是下界时 Δ 也是单侧界；两侧都是下界时 Δ 无界，不加符号
+        dmark = "≥ " if la and not lb else ("≤ " if lb and not la else "")
+        L.append(f"| {label} | {ca} | {cb} | {dmark}{fmt(delta, unit, digits)}{rel} | {ratio} |")
     L.append("")
     L.append(
         f"Δ = {a_name} − {b_name}（实验组 − 对照组），百分比相对对照组。"
         "Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。"
     )
+    if any_bound:
+        L.append(
+            "`≥`：该侧分位落在超时请求上，按右删失计入，是下界；Δ 前的 ≥/≤ 为相应的单侧界，"
+            "两侧都是下界时 Δ 不定。"
+        )
     notes: list[str] = []
     if len(a) < 3 or len(b) < 3:
         notes.append("至少一方不足 3 次重跑，方差未确认。")
