@@ -189,3 +189,13 @@ timestamp 组的 prompt token 增量估计 +20,925，与实测 +20,925 逐 token
 **不做**：`--mem-fraction-static`/`--max-total-tokens` 缩池子——池子下限受最长请求约束（重放侧 max prompt 52,715 + 输出 4,339 ≈ 53.4k，sglang `max_req_len = min(context_len−1, max_total_num_tokens−1)`），可行的最小池子 ≈ 54–56k 恰在 c2 同飞和（45.5–55.4k）的边界上，效应小且解释力弱；`--kv-cache-dtype fp8_e5m2`（池子 ≈ 157k）先需 ~10 分钟开卡验证 4090 兼容，且 dtype 改变 attention kernel、延迟不与 bf16 同表，只比缓存类指标需 ~5 h、全套 ~23 h，列为可砍；并发 c16 与换卡不做（c8 已删失、换环境基线作废）。
 
 **影响**：GPU 前的准备已全部完成（transform 位置、report 工具、configs、dry-run、estimate）；开卡按批向人确认。批 3 需要用 `SCHEDULE_POLICY=fcfs bash scripts/serve.sh` 重启服务，与 lpm 组不能放在同一个 run-batch。
+
+## 2026-09-22 · W5 砍掉 after_tools；全部批次自动串行运行，结束关机
+
+**决定**：删除可选组 `experiments/w5-after-tools`（transform 代码里的 `position: after_tools` 与其单测保留）。W5 其余七个实验由 `scripts/run-w5.sh` 在远端一次性自动串行运行，不再逐批确认；批 1（`w5-control`、`w5-tail`）已由人于 2026-09-22 09:11 启动，脚本等它结束后接批 2、批 3，全部跑完自动 `shutdown`（AutoDL 关机脚本，停止计费）。
+
+**为什么砍 after_tools**：它的结果是一个可以从第一道门直接算出的比值——命中 ≈ 可缓存头部（system 文本 + tools 块）/ 当轮 prompt。`estimate.json` 的 per-trajectory 数据：头部为常数（本负载 1.6k 或 4.4k tok，对应两种 system prompt 长度；tools 块 25 条轨迹全部落在 545–817 tok），命中随平均 prompt 从 3k → 33k 单调由 0.449 降到 0.134，按桶 <8k 0.237、8–20k 0.145、≥20k 0.136。c1 下 W3 四组的估计与实测差 ≤ 0.0007，3.9 h 机时验证不出新信息。「头内部换位置救不回来」这个结论的前提是 tools 块 ≪ 历史；若 harness 的 tools 块达 10–30k tok（大量 MCP 工具），结论要重看——记入 findings 的适用边界，不用 GPU 证。
+
+**批 3 的启动方式**：`w5-c8-lpm` 与 `w5-c8-fcfs` **各自冷启动 server**（先重启 lpm 跑 lpm 组，再重启 fcfs 跑 fcfs 组），而不是 lpm 组沿用批 1/2 的热 session——让 `--schedule-policy` 成为两组之间唯一差异，缓存起点也对称。批 2 沿用批 1 的 session（同 W3/W4 做法：一个 session 内连跑）。
+
+**影响**：CLAUDE.md §11 状态更新；§7「需要开卡的命令不得自动执行」对本次 W5 链视为已一次性确认。结果拉回后按批出 `report.md` / `compare-*.md`，写入 `docs/experiments.md`。
