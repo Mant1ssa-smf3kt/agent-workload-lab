@@ -17,7 +17,7 @@
 - **命中率不是好的延迟指标，同一个 harness 改动在负载下效果可以反过来。** 截断旧工具结果在 c=1 时靠 decode 变快（命中略降），在 c=4 时靠缓存（命中 0.747 → 0.880，TTFT P95 −82%）。上下文管理策略必须带并发评估。
 - **调度策略是真实的取舍，不是免费的修复。** 最长前缀匹配（LPM）会饿死长会话（c=8 下反复出现 ≥ 600 s 超时）；FCFS 消除饥饿（最大 TTFT ≤ 77 s），代价是命中 0.53 → 0.20、TTFT 中位数变成 3.9 倍。
 
-数字之外可以复用的：真实 agent 会话的录制 → 重放链路，每个 run 自带环境指纹；不需要 GPU 的第一道门（`just estimate`，真 chat template + 真 tokenizer），单会话命中率与实测差 ≤ 0.0007；对照报告拒绝指纹不一致或改动超过一个变量的比较，报 Δ/噪声，超时请求按右删失计入分位。负面结果与更正都留在 [`docs/experiments.md`](docs/experiments.md)。
+数字之外可以复用的：真实 agent 会话的录制 → 重放链路，每个 run 自带环境指纹；不需要 GPU 的第一道门（`just estimate`，真 chat template + 真 tokenizer），单会话命中率除 `tools_rotate`（估计 0.108、实测 0.315）外与实测差 ≤ 0.0007；对照报告拒绝指纹不一致或改动超过一个变量的比较，报 Δ/噪声，超时请求按右删失计入分位。负面结果与更正都留在 [`docs/experiments.md`](docs/experiments.md)。
 
 范围：一张卡、一个 8B 模型、一种 serving 框架、一种 harness、25 条轨迹。绝对数字不外推；定性结论依赖负载形状（长 prompt、短输出、轮间有间隙）。[`docs/findings.md`](docs/findings.md) 里标「推断」的机制与数据一致，但没有被直接观测到。
 
@@ -34,7 +34,7 @@
 |---|---|---|---|---|
 | append-only（对照） | 0.9633 | 507 ms | 22.8 s | 19.47 M |
 | `system_timestamp` — system prompt 末尾写时钟 | **0.1059** | **5971 ms**（+1079%） | 24.6 s（+7.7%） | +0.1% |
-| `tools_rotate` — 每请求把工具列表轮转一位 | 0.3150 | 5951 ms（+1074%） | 24.1 s（+5.5%） | ±0 |
+| `tools_rotate` — 每请求把工具列表轮转一位 | 0.3150 | 5951 ms（+1075%） | 24.1 s（+5.5%） | ±0 |
 | `truncate_tool_results` — 截断旧工具结果 | 0.9102 | 695 ms（+37%） | **21.2 s（−7.1%）** | **−29.2%** |
 
 ### 真实轮间时序下的并发扫描（W4）
@@ -52,13 +52,13 @@
 | 8 | 0.5309 | 4.7 / 37.1 / 223 s | 10.6 / 70.5 / 231 s | 9.3 M | 82% | **11** | **3237 s** |
 | 4 + `system_timestamp` | **0.0981** | 4.9 / 18.1 / 45.8 s | 10.9 / 51.0 / 92.8 s | **17.8 M** | 52% | 0 | 4167 s |
 
-超时请求按右删失下界计入分位，不剔除（见 [decisions](docs/decisions.md)）。c=8 的 P99 CV 14–17%，其余 ≤ 4.8%。
+超时请求按右删失下界计入分位，不剔除（见 [decisions](docs/decisions.md)）。重跑 CV 除 c=2 的 TTFT P99（22%）与 c=8（TTFT P50/P95 6–9%，P99 14–17%）外均 ≤ 4.8%。
 
 ### 后续：修法、并发下的截断、调度策略（W5）
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/w5-followups-dark.png">
-  <img alt="W5: cache hit rate and TTFT / turn-latency P50–max for the timestamp fix, truncation at c=4 and FCFS vs LPM at c=8" src="docs/figures/w5-followups.png">
+  <img alt="W5：时间戳修法、c=4 下的截断、c=8 下 FCFS 与 LPM 的命中率与 TTFT / 单轮延迟 P50–max" src="docs/figures/w5-followups.png">
 </picture>
 
 W5 每组只与自带的重跑对照组比较（replayer commit 与 W3/W4 不同）。
@@ -79,7 +79,7 @@ c=4 下时间戳放末尾与 append-only 各项都在噪声内（Δ/噪声 ≤ 2
 
 完整版与出处见 [`docs/findings.md`](docs/findings.md)。
 
-1. **过了缓存装得下的并发，再加并发吞吐倒退。** 同样 19.4M prompt token，c=8 比 c=4 多花 16% 墙钟、多 9.3M 驱逐 token 的重复 prefill、丢 11 个请求。
+1. **过了缓存装得下的并发，再加并发吞吐倒退。** 同样 19.4M prompt token，c=8 每次比 c=4 多花 16% 墙钟，每次要重复 prefill 9.3M 被驱逐的 token（c=4 为 5.1M）；三次重跑共 11 个请求超时。
 2. **压力几乎全部由前缀驱逐吸收，回撤罕见。** c=4 下每 run 837 个请求里最多回撤 4 个（c=1、c=2 为 0），被回撤的输入 token 只有驱逐量的 0.3–1.6%。*（2026-09-23 更正：旧版写「回撤一次没发生」，读的是每个统计周期清零的 gauge，见 [decisions](docs/decisions.md)。）* agent 每轮在 ~21k 的 prompt 上只出 ~114 个 token，KV 池里塞满的是**空闲会话的缓存前缀**，调度器永远有东西可驱逐。c ≥ 4 时驱逐量 ≈ 未命中量：每次驱逐都是某个活着的会话稍后付一次冷 prefill。
 3. **命中率是个糟糕的延迟预测器。** 掉 5 个点伴随单轮 P95 −7%（截断）；掉 21 个点伴随 TTFT P95 +2488%（排队）；再掉 65 个点只多 +38%。该报未命中的 token **量**与队列占用，不是百分比。
 4. **截断旧工具结果：单并发下靠 decode 变快，四并发下靠缓存。** c=1 时输出长度相同，TTFT 变差（+37%）而单轮 P95 变好（−7%）。c=4 时符号翻转：命中 0.747 → 0.880、驱逐 −63%、TTFT P95 −82%、单轮 P95 −30%——它同时让 prompt 少了 29%，所以既是活少了、也是缓存更好。
@@ -104,8 +104,8 @@ pi + extension/  ──录制──▶  traces/*.jsonl  ──replay/──▶  
 | `extension/` | pi extension（TypeScript）：原样记录每次 provider 请求、时序点、工具耗时、轮次边界。只观察不修改。 |
 | `replay/` | replayer：轨迹 → 归一化 payload 序列 → 按并发与时序打到 OpenAI 兼容端点；每次 run 落一份自描述 artifact（config、指纹、计划、逐请求日志、指标快照、summary）。被测的上下文改写也在这里。 |
 | `metrics/` | SGLang `/metrics` 采样。 |
-| `analysis/` | 负载画像、方差/对照报告（指纹不一致或多于一个变量时拒绝对照）、出图。 |
-| `experiments/` | 每个实验一个目录：`config.yaml` + 生成的 `report.md` / `compare-*.md`。原始 `out/` 不入库。 |
+| `analysis/` | 负载画像、方差/对照报告（指纹不一致或多于一个变量时拒绝对照，SGLang 启动参数的改动也算一个变量）、出图，以及 `estimate`——不需要 GPU 的第一道门：每个请求都经真实 chat template 与 tokenizer 渲染，命中率 = 与服务端已见内容的 token 级最长公共前缀（c=1 下与实测差 ≤ 0.0007，`tools_rotate` 除外：估计 0.108、实测 0.315）。 |
+| `experiments/` | 每个实验一个目录：`config.yaml` + 生成的 `report.md` / `compare-*.md` / `estimate.md`。原始 `out/` 不入库。 |
 | `scripts/` | 远端（AutoDL）装配、带指纹的 SGLang 启动、rsync、录制辅助。 |
 | `docs/` | [`findings.md`](docs/findings.md) 结论 · [`experiments.md`](docs/experiments.md) 实验日志（含负面结果）· [`decisions.md`](docs/decisions.md) 口径与取舍 · [`recording.md`](docs/recording.md) / [`remote.md`](docs/remote.md) runbook · [`figures/`](docs/figures) |
 
@@ -126,6 +126,7 @@ uv sync && just test && just lint                 # Python 3.12 + uv；extension
 bash scripts/record.sh <repo> <case-name>         # 用 pi 录一条轨迹（自备模型与 API key）
 just profile                                      # 负载画像 → experiments/profile/out/
 just replay-dry w4-c4                             # 不连服务，只构建重放计划
+just estimate w3-timestamp w3-control             # 第一道门：经真实 chat template + tokenizer 估计命中率
 ```
 
 远端（一张 24 GB 卡；项目用的是 AutoDL RTX 4090，见 [`docs/remote.md`](docs/remote.md)）：

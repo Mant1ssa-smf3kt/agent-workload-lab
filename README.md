@@ -17,7 +17,7 @@ That dynamic content in the system prompt breaks prefix caching is not news — 
 - **Hit rate is a poor latency signal, and the same harness change can flip sign under load.** Truncating old tool results is a decode win at c=1 (hit rate slightly down) and a cache win at c=4 (hit 0.747 → 0.880, TTFT P95 −82 %). Context-management strategies have to be evaluated with concurrency.
 - **The scheduler choice is a real trade-off, not a free fix.** Longest-prefix-match starves long sessions (repeated ≥ 600 s timeouts at c=8); FCFS removes the starvation (max TTFT ≤ 77 s) at the cost of hit rate 0.53 → 0.20 and 3.9× median TTFT.
 
-Reusable beyond these numbers: a record → replay pipeline for real agent sessions with per-run environment fingerprints; a GPU-free first gate (`just estimate`, real chat template + tokenizer) that matches measured single-session hit rate within 0.0007; comparison reports that refuse mismatched fingerprints or more than one changed variable, report Δ/noise, and keep timed-out requests as right-censored percentiles. Negative results and corrections are kept in [`docs/experiments.md`](docs/experiments.md).
+Reusable beyond these numbers: a record → replay pipeline for real agent sessions with per-run environment fingerprints; a GPU-free first gate (`just estimate`, real chat template + tokenizer) that matches measured single-session hit rate within 0.0007 for every c=1 group except `tools_rotate` (estimate 0.108, measured 0.315); comparison reports that refuse mismatched fingerprints or more than one changed variable, report Δ/noise, and keep timed-out requests as right-censored percentiles. Negative results and corrections are kept in [`docs/experiments.md`](docs/experiments.md).
 
 Scope: one GPU, one 8B model, one serving stack, one harness, 25 trajectories. Absolute numbers do not transfer; the qualitative findings depend on the workload shape (long prompts, short outputs, gaps between turns). Mechanisms marked *inferred* in [`docs/findings.md`](docs/findings.md) are consistent with the data but not directly observed.
 
@@ -34,7 +34,7 @@ Scope: one GPU, one 8B model, one serving stack, one harness, 25 trajectories. A
 |---|---|---|---|---|
 | append-only (control) | 0.9633 | 507 ms | 22.8 s | 19.47 M |
 | `system_timestamp` — clock at the end of the system prompt | **0.1059** | **5971 ms** (+1079 %) | 24.6 s (+7.7 %) | +0.1 % |
-| `tools_rotate` — tool list rotated by one each request | 0.3150 | 5951 ms (+1074 %) | 24.1 s (+5.5 %) | ±0 |
+| `tools_rotate` — tool list rotated by one each request | 0.3150 | 5951 ms (+1075 %) | 24.1 s (+5.5 %) | ±0 |
 | `truncate_tool_results` — old tool outputs clipped | 0.9102 | 695 ms (+37 %) | **21.2 s (−7.1 %)** | **−29.2 %** |
 
 ### Concurrency sweep with real inter-turn timing (W4)
@@ -52,7 +52,7 @@ Scope: one GPU, one 8B model, one serving stack, one harness, 25 trajectories. A
 | 8 | 0.5309 | 4.7 / 37.1 / 223 s | 10.6 / 70.5 / 231 s | 9.3 M | 82 % | **11** | **3237 s** |
 | 4 + `system_timestamp` | **0.0981** | 4.9 / 18.1 / 45.8 s | 10.9 / 51.0 / 92.8 s | **17.8 M** | 52 % | 0 | 4167 s |
 
-Timed-out requests are kept in the percentiles as right-censored lower bounds, not dropped ([decision](docs/decisions.md)). c=8 P99 has CV 14–17 %; everything else ≤ 4.8 %.
+Timed-out requests are kept in the percentiles as right-censored lower bounds, not dropped ([decision](docs/decisions.md)). Run-to-run CV is ≤ 4.8 % except c=2 TTFT P99 (22 %) and c=8 (TTFT P50/P95 6–9 %, P99 14–17 %).
 
 ### Follow-ups: the fix, truncation under load, and the scheduler (W5)
 
@@ -79,7 +79,7 @@ At c=4 the timestamp-at-end group is within noise of append-only on every metric
 
 Full write-up with sources in [`docs/findings.md`](docs/findings.md).
 
-1. **Past the cache-fitting concurrency, more concurrency reduces throughput.** c=8 takes 16 % longer wall time than c=4 for the same 19.4 M prompt tokens, re-prefills 9.3 M evicted tokens and drops 11 requests.
+1. **Past the cache-fitting concurrency, more concurrency reduces throughput.** Per run, c=8 takes 16 % longer wall time than c=4 for the same 19.4 M prompt tokens and re-prefills 9.3 M evicted tokens (c=4: 5.1 M); across its three runs 11 requests time out.
 2. **Memory pressure is absorbed almost entirely by prefix eviction; retraction is rare.** At c=4 at most 4 of 837 requests per run are retracted (0 at c=1 and c=2); retracted input tokens are 0.3–1.6 % of evicted tokens. *(Corrected 2026-09-23: an earlier version said retraction never triggers — it read a gauge that resets every stats interval; see [decision](docs/decisions.md).)* Agent turns emit ~114 output tokens on ~21 k-token prompts, so the KV pool is full of *idle sessions' cached prefixes*, and the scheduler always has something to evict. At c ≥ 4, evicted tokens ≈ missed tokens: every eviction is a live session paying a cold prefill later.
 3. **Hit rate is a poor predictor of latency.** −5 points of hit rate came with −7 % turn P95 (truncation); −21 points came with +2488 % TTFT P95 (queueing); the next −65 points added only +38 %. Report miss *volume* and queue occupancy, not the hit percentage.
 4. **Truncating old tool results helps through decode at one session and through the cache at four.** At c=1 TTFT got worse (+37 %) while turn P95 got better (−7 %) with identical output lengths. At c=4 the sign flips: hit rate 0.747 → 0.880, evictions −63 %, TTFT P95 −82 %, turn P95 −30 % — the change also cuts prompt tokens by 29 %, so this is less work as well as better caching.
@@ -104,7 +104,7 @@ pi + extension/  ──record──▶  traces/*.jsonl  ──replay/──▶  
 | `extension/` | pi extension (TypeScript) that records every provider request verbatim with timing points, tool durations and turn boundaries. Observe-only. |
 | `replay/` | Replayer: trajectory → normalised payload sequence → replayed to an OpenAI-compatible endpoint at a chosen concurrency and timing mode; writes a self-describing artifact per run (config, fingerprint, plan, per-request log, metrics snapshots, summary). Includes the context transforms under test. |
 | `metrics/` | SGLang `/metrics` sampler. |
-| `analysis/` | Workload profile, variance/comparison reports (refuse to compare mismatched fingerprints or more than one changed variable — a changed SGLang launch flag counts as a variable), figures, and `estimate` — the GPU-free first gate: every request rendered through the served model's real chat template and tokenizer, hit rate = token-level longest common prefix with what the server has seen (calibrated to the measured runs within 0.0007 at c=1). |
+| `analysis/` | Workload profile, variance/comparison reports (refuse to compare mismatched fingerprints or more than one changed variable — a changed SGLang launch flag counts as a variable), figures, and `estimate` — the GPU-free first gate: every request rendered through the served model's real chat template and tokenizer, hit rate = token-level longest common prefix with what the server has seen (within 0.0007 of the measured runs at c=1, except `tools_rotate`: 0.108 estimated vs 0.315 measured). |
 | `experiments/` | One directory per experiment: `config.yaml` + generated `report.md` / `compare-*.md` / `estimate.md`. Raw `out/` is not committed. |
 | `scripts/` | Remote (AutoDL) setup, SGLang launch with fingerprinting, rsync, recording helpers. |
 | `docs/` | [`findings.md`](docs/findings.md) conclusions · [`experiments.md`](docs/experiments.md) run log incl. negative results · [`decisions.md`](docs/decisions.md) metric definitions and trade-offs · [`recording.md`](docs/recording.md) / [`remote.md`](docs/remote.md) runbooks · [`figures/`](docs/figures) |
@@ -145,7 +145,7 @@ Every artifact carries an environment fingerprint (GPU, driver, SGLang version a
 
 ## Scope and limitations
 
-- One GPU, one model, one serving stack, one harness. Absolute numbers do not transfer; the qualitative findings depend on the workload shape (long prompts, short outputs, gaps between turns) and should, but that is untested.
+- One GPU, one model, one serving stack, one harness. Absolute numbers do not transfer; the qualitative findings depend on the workload shape (long prompts, short outputs, gaps between turns) and should transfer, but that is untested.
 - Transform experiments (W3) use compressed timing, the concurrency sweep (W4) real timing; the two tables are never compared directly. At c=1 the two modes agree within 1.7 % on every percentile.
 - Task success is deliberately out of scope: the replay model is a small local model and only the token sequence and timing of the recorded sessions are reproduced.
 - Not done: c=3, a longer client timeout at c=8, KV-cache FP8. See [`docs/later.md`](docs/later.md).
