@@ -43,6 +43,11 @@ Timed-out requests are kept in the percentiles as right-censored lower bounds, n
 
 ### Follow-ups: the fix, truncation under load, and the scheduler (W5)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/w5-followups-dark.png">
+  <img alt="W5: cache hit rate and TTFT / turn-latency P50–max for the timestamp fix, truncation at c=4 and FCFS vs LPM at c=8" src="docs/figures/w5-followups.png">
+</picture>
+
 Each W5 group is compared only with its own re-run control (replayer commit changed since W3/W4).
 
 | experiment (vs its control) | cache hit | TTFT P50 / P95 / P99 | turn latency P50 / P95 / P99 | evicted tokens / run | timeouts (≥ 600 s) |

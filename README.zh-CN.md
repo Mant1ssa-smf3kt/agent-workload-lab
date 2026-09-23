@@ -43,6 +43,11 @@
 
 ### 后续：修法、并发下的截断、调度策略（W5）
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/w5-followups-dark.png">
+  <img alt="W5: cache hit rate and TTFT / turn-latency P50–max for the timestamp fix, truncation at c=4 and FCFS vs LPM at c=8" src="docs/figures/w5-followups.png">
+</picture>
+
 W5 每组只与自带的重跑对照组比较（replayer commit 与 W3/W4 不同）。
 
 | 实验（对各自的对照组） | cache hit | TTFT P50 / P95 / P99 | 单轮 P50 / P95 / P99 | 驱逐 token / run | 超时（≥ 600 s） |

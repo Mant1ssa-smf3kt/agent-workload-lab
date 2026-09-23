@@ -32,6 +32,23 @@ def test_plot_writes_figures_and_csv_twins(tmp_path: Path) -> None:
     with (out / "w3-transforms.csv").open() as f:
         assert [r["transform"] for r in csv.DictReader(f)] == ["append-only (control)", "system_timestamp"]
 
+    assert not (out / "w5-followups.csv").exists()  # no W5 runs → figure skipped, others still drawn
+
+    for name, timeouts in (("w5-c8-lpm", 2), ("w5-c8-fcfs", 0)):
+        for i in range(3):
+            make_run(exps / name, f"r{i}", hit=0.5, ttft_p95=30000, timeouts=timeouts)
+    assert main(["--experiments-dir", str(exps), "--out", str(out)]) == 0
+    assert (out / "w5-followups.png").stat().st_size > 0 and (
+        out / "w5-followups-dark.png"
+    ).stat().st_size > 0
+    with (out / "w5-followups.csv").open() as f:
+        rows = list(csv.DictReader(f))
+    assert [(r["experiment"], r["group"], r["concurrency"]) for r in rows] == [
+        ("w5-c8-lpm", "append-only · LPM", "8"),
+        ("w5-c8-fcfs", "append-only · FCFS", "8"),
+    ]
+    assert rows[0]["latency_p99_s_mean"] == "600.0" and rows[0]["ttft_p50_s_n"] == "3"
+
     # nothing to plot → non-zero, no files
     assert main(["--experiments-dir", str(tmp_path / "empty"), "--out", str(tmp_path / "none")]) == 1
     assert not (tmp_path / "none").exists()

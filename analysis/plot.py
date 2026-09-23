@@ -1,11 +1,14 @@
 """Figures from replay artifacts (``just plot``).
 
-Two figures, each in a light and a dark variant plus a CSV twin holding exactly the plotted
+Three figures, each in a light and a dark variant plus a CSV twin holding exactly the plotted
 numbers (CLAUDE.md §8.4: every number traces to ``experiments/*/out/*/summary.json``):
 
 - ``w4-concurrency``: cache hit rate, evicted tokens, TTFT P95 and turn-latency P95 against
   concurrency for the append-only replays, with the system_timestamp replay at c=4 as a marker.
 - ``w3-transforms``: the same three latency/cache numbers for the four W3 context transforms.
+- ``w5-followups``: cache hit rate plus TTFT and turn-latency P50 / P95 / P99 / max per W5 group
+  (timestamp moved to the end of the messages, truncation under load, FCFS vs LPM at c=8), each
+  beside its own re-run control. Values right-censored by the client timeout are drawn hollow.
 
 Marks over three repeats show the mean with a min–max range bar. Groups with no finished
 runs are skipped with a warning rather than failing the whole render.
@@ -27,9 +30,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.lines import Line2D
 
 from analysis.log import configure, get_logger
-from analysis.report import Run, dig, load_runs
+from analysis.report import Run, censored, dig, load_runs
 
 log = get_logger("analysis.plot")
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +46,32 @@ W3_GROUPS = (
     ("w3-tools-rotate", "tools_rotate"),
     ("w3-truncate", "truncate_tool_results"),
 )
+# (concurrency label, ((experiment, row label, series), ...)); each block holds its own control.
+W5_BLOCKS = (
+    (
+        "c=1",
+        (
+            ("w5-control", "append-only", "append-only (control)"),
+            ("w5-tail", "timestamp at end of messages", "timestamp at end of messages"),
+        ),
+    ),
+    (
+        "c=4",
+        (
+            ("w5-c4", "append-only", "append-only (control)"),
+            ("w5-c4-tail", "timestamp at end of messages", "timestamp at end of messages"),
+            ("w5-c4-truncate", "truncate_tool_results", "truncate_tool_results"),
+        ),
+    ),
+    (
+        "c=8",
+        (
+            ("w5-c8-lpm", "append-only · LPM", "append-only (control)"),
+            ("w5-c8-fcfs", "append-only · FCFS", "FCFS scheduling"),
+        ),
+    ),
+)
+W5_MARKS = (("p50", "o", "P50"), ("p95", "D", "P95"), ("p99", "s", "P99"), ("max", "^", "max"))
 
 # Series colors follow the entity across both figures (dataviz palette, slots 1–4).
 THEMES: dict[str, dict[str, Any]] = {
@@ -57,6 +87,8 @@ THEMES: dict[str, dict[str, Any]] = {
             "system_timestamp": "#eb6834",
             "tools_rotate": "#1baf7a",
             "truncate_tool_results": "#eda100",
+            "timestamp at end of messages": "#e87ba4",
+            "FCFS scheduling": "#008300",
         },
     },
     "dark": {
@@ -71,6 +103,8 @@ THEMES: dict[str, dict[str, Any]] = {
             "system_timestamp": "#d95926",
             "tools_rotate": "#199e70",
             "truncate_tool_results": "#c98500",
+            "timestamp at end of messages": "#d55181",
+            "FCFS scheduling": "#008300",
         },
     },
 }
@@ -318,6 +352,190 @@ def render_transforms(exp_dir: Path, out: Path, theme: str) -> list[Path]:
     return written
 
 
+# ── figure 3: W5 follow-ups ───────────────────────────────────────────────
+
+
+@dataclass
+class Dist:
+    stats: dict[str, Stat | None]  # p50 / p95 / p99 / max, seconds
+    censored: dict[str, bool]  # any run's value at that point is a timeout lower bound
+
+
+def _dist(runs: list[Run], field: str) -> Dist:
+    stats: dict[str, Stat | None] = {}
+    flags: dict[str, bool] = {}
+    for q, _, _ in W5_MARKS:
+        stats[q] = _stat([_sec(dig(r.summary, ("all", field, q))) for r in runs])
+        flags[q] = any(censored(r.summary, ("all", field, q)) for r in runs)
+    return Dist(stats, flags)
+
+
+def _fmt_s(v: float) -> str:
+    return f"{v:.2f} s" if v < 1 else f"{v:.1f} s" if v < 100 else f"{v:.0f} s"
+
+
+def render_w5(exp_dir: Path, out: Path, theme: str) -> list[Path]:
+    t = THEMES[theme]
+    rows: list[tuple[str, str, str, str, Stat | None, Dist, Dist]] = []
+    for block, groups in W5_BLOCKS:
+        for name, label, series in groups:
+            runs = load_runs(exp_dir / name)
+            if not runs:
+                log.warning("no finished runs, skipped", exp=name)
+                continue
+            hit = _stat([dig(r.summary, ("all", "cache_hit_rate")) for r in runs])
+            rows.append((block, name, label, series, hit, _dist(runs, "ttft_ms"), _dist(runs, "latency_ms")))
+    if not rows:
+        return []
+
+    # top-to-bottom, with a gap between concurrency blocks
+    ys: list[float] = []
+    y, prev = 0.0, rows[0][0]
+    for block, *_ in rows:
+        if block != prev:
+            y -= 0.6
+            prev = block
+        ys.append(y)
+        y -= 1.0
+    seps = [(ys[i - 1] + ys[i]) / 2 for i in range(1, len(rows)) if rows[i][0] != rows[i - 1][0]]
+
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=(13.0, 0.42 * len(rows) + 1.6),
+        facecolor=t["surface"],
+        gridspec_kw={"width_ratios": [1.0, 1.6, 1.6]},
+    )
+    ax_hit, *ax_lat = list(axes)
+
+    _style(ax_hit, t, ygrid=False)
+    for y, (_, _, _, series, hit, _, _) in zip(ys, rows, strict=True):
+        if hit is None:
+            continue
+        ax_hit.barh(y, hit.mean, height=0.5, color=t["series"][series], zorder=3)
+        if hit.hi > hit.lo:
+            ax_hit.plot([hit.lo, hit.hi], [y, y], color=t["ink2"], linewidth=1, alpha=0.7, zorder=4)
+        ax_hit.text(hit.hi, y, f"  {hit.mean:.3f}", fontsize=8, color=t["ink2"], ha="left", va="center")
+    ax_hit.set_xlim(0, 1.2)
+    ax_hit.set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    ax_hit.set_yticks(ys)
+    ax_hit.set_yticklabels([f"{block}  {label}" for block, _, label, *_ in rows], fontsize=8)
+    ax_hit.set_title("Cache hit rate", fontsize=10, loc="left", pad=8, color=t["ink"])
+    ax_hit.spines["left"].set_visible(False)
+
+    for ax, idx, title in ((ax_lat[0], 5, "TTFT (s, log)"), (ax_lat[1], 6, "Turn latency (s, log)")):
+        _style(ax, t, ygrid=False)
+        for y, row in zip(ys, rows, strict=True):
+            dist: Dist = row[idx]  # type: ignore[assignment]
+            color = t["series"][row[3]]
+            pts = [(q, m, st) for q, m, _ in W5_MARKS if (st := dist.stats[q]) is not None]
+            if not pts:
+                continue
+            ax.plot([pts[0][2].mean, pts[-1][2].mean], [y, y], color=color, linewidth=2, alpha=0.45, zorder=2)
+            for q, marker, st in pts:
+                hollow = dist.censored[q]
+                ax.plot(
+                    [st.mean],
+                    [y],
+                    linestyle="none",
+                    marker=marker,
+                    markersize=8,
+                    color=color,
+                    markerfacecolor=t["surface"] if hollow else color,
+                    markeredgecolor=color if hollow else t["surface"],
+                    markeredgewidth=2 if hollow else 1.5,
+                    zorder=3,
+                )
+            first, last = pts[0], pts[-1]
+            ax.text(
+                first[2].mean / 1.25,
+                y,
+                _fmt_s(first[2].mean),
+                fontsize=7.5,
+                color=t["ink2"],
+                ha="right",
+                va="center",
+            )
+            cens = "≥ " if dist.censored[last[0]] else ""
+            ax.text(
+                last[2].mean * 1.25,
+                y,
+                cens + _fmt_s(last[2].mean),
+                fontsize=7.5,
+                color=t["ink2"],
+                ha="left",
+                va="center",
+            )
+        ax.set_xscale("log")
+        ax.set_xlim(0.05, 5000)
+        ax.set_xticks([0.1, 1, 10, 100, 1000])
+        ax.set_xticklabels(["0.1", "1", "10", "100", "1000"])
+        ax.set_yticks(ys)
+        ax.set_yticklabels([])
+        ax.set_title(title, fontsize=10, loc="left", pad=8, color=t["ink"])
+        ax.spines["left"].set_visible(False)
+    for ax in axes:
+        for s_ in seps:
+            ax.axhline(s_, color=t["grid"], linewidth=1.0, zorder=1)
+        ax.set_ylim(min(ys) - 0.7, max(ys) + 0.7)
+
+    handles = [
+        Line2D([], [], linestyle="none", marker=m, markersize=7, color=t["ink2"], label=lab)
+        for _, m, lab in W5_MARKS
+    ]
+    handles.append(
+        Line2D(
+            [],
+            [],
+            linestyle="none",
+            marker="^",
+            markersize=7,
+            color=t["ink2"],
+            markerfacecolor=t["surface"],
+            markeredgewidth=1.5,
+            label="hollow: ≥ (600 s client timeout)",
+        )
+    )
+    fig.legend(
+        handles=handles,
+        loc="lower center",
+        ncol=len(handles),
+        frameon=False,
+        fontsize=8,
+        labelcolor=t["ink2"],
+        bbox_to_anchor=(0.5, -0.02),
+    )
+    fig.suptitle(
+        "W5 follow-ups, each block vs its own re-run control · one RTX 4090 · Qwen3-8B-FP8 · SGLang 0.5.20"
+        " · real timing · n=3 (mean; hit-rate bar shows min–max)",
+        fontsize=9,
+        color=t["muted"],
+        x=0.01,
+        ha="left",
+        y=1.02,
+    )
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    written = [_save(fig, out, "w5-followups", theme, t)]
+    if theme == "light":
+        csv_rows: list[dict[str, Any]] = []
+        for block, name, label, _, hit, ttft, lat in rows:
+            stats: dict[str, Stat | None] = {"cache_hit_rate": hit}
+            stats.update({f"ttft_{q}_s": ttft.stats[q] for q, _, _ in W5_MARKS})
+            stats.update({f"latency_{q}_s": lat.stats[q] for q, _, _ in W5_MARKS})
+            csv_rows.append(
+                {
+                    "experiment": name,
+                    "group": label,
+                    "concurrency": block.removeprefix("c="),
+                    **_flat(stats),
+                    "ttft_max_censored": ttft.censored["max"],
+                    "latency_max_censored": lat.censored["max"],
+                }
+            )
+        written.append(_csv(out / "w5-followups.csv", csv_rows))
+    return written
+
+
 # ── output ────────────────────────────────────────────────────────────────
 
 
@@ -358,6 +576,7 @@ def main(argv: list[str] | None = None) -> int:
     for theme in THEMES:
         written += render_concurrency(args.experiments_dir, args.out, theme)
         written += render_transforms(args.experiments_dir, args.out, theme)
+        written += render_w5(args.experiments_dir, args.out, theme)
     for p in written:
         log.info("wrote figure", path=str(p))
     return 0 if written else 1

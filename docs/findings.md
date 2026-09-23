@@ -42,6 +42,11 @@ W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report
 
 c=8 的分位含 11 个按右删失计入的超时请求（客户端 600 s 放弃，真实值更大；`decisions.md` 2026-09-21）。CV：c=8 的 P99 为 14–17%，其余 ≤ 4.8%。
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/w5-followups-dark.png">
+  <img alt="W5: cache hit rate and TTFT / turn-latency P50–max for the timestamp fix, truncation at c=4 and FCFS vs LPM at c=8" src="figures/w5-followups.png">
+</picture>
+
 | W5 · real timing（对照组各自重跑） | cache hit | TTFT P50 / P95 / P99 (ms) | 单轮 P50 / P95 / P99 (ms) | 驱逐 tok/次 | 超时 | wall (s) |
 |---|---|---|---|---|---|---|
 | c=1 append-only（w5-control） | 0.9633 ± 0.0000 | 242 / 516 / 871 | 2372 / 22975 / 40124 | 0.96M | 0 | 4657 |
