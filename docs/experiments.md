@@ -121,3 +121,20 @@
 - W4 结论 1 与 c8 超时分析里的「`num_retracted_reqs` 全为 0」读的是每周期清零的 gauge。按累计计数器 `num_retracted_requests_total`（`experiments/w4-*/report.md` 的 `retracted requests` 行）：w4-c1 0/0/0、w4-c2 0/0/0、w4-c4 1/4/4、w4-c4-timestamp 2/2/1、w4-c8 1/2/0。回撤输入 token 三次合计 c4 237k、c4-timestamp 141k、c8 79k，是同组驱逐 token 的 1.6% / 0.26% / 0.28%。baseline-c1/c3、W3 全部 run 为 0。
 - W5 已完成的 run：w5-c4-tail 第 3 次回撤 2 个请求，w5-c4-truncate 第 3 次回撤 1 个，其余为 0。
 - 定性结论「退化来自驱逐 + 排队」不变；「回撤从未发生」「预期的 retraction 未发生」撤回。口径见 `docs/decisions.md` 2026-09-23。
+
+## 2026-09-23 · experiments/w5-*（W5 三批）— 各 3 次完成
+- 环境：RTX 4090 · sglang 0.5.20 · Qwen/Qwen3-8B-FP8 · pi 0.85.1 · replayer `8bc97bcf`（clean）。批 1、2 同一 server session（lpm，2026-09-22 09:25 → 23:28）；批 3 由 `ONLY_BATCH3=1 scripts/run-w5.sh` 补跑，lpm、fcfs 各自冷启动（2026-09-23 08:48 lpm ready 50 s；11:33 fcfs ready 70 s，起前显存 0 MiB），链路 14:46 按设计关机。2026-09-22 的启动竞态修复在真卡上验证通过。
+- `out/` 已拉回本地；`just resummarize` 七组 21 个 run（远端 replayer 早于 `b0af394`，summary 里没有 `server_delta`），再 `just report` / `just compare`。每组第 1 个 run 的 `metrics_before` 缺 `sglang:evicted_tokens_total`（冷启动后计数器尚未出现、不在 `LAZY_COUNTERS` 里），按缺失处理：**w5-control、w5-c8-lpm、w5-c8-fcfs 的驱逐量是 n=2**。
+- `run-batch.sh` 日志里 w5-c8-lpm 三次都标 `FAILED`：`replay.run` 在 `n_errors > 0` 时返回 1（`replay/run.py:136`）。三次都跑完并写了 summary，错误全是 `ReadTimeout`（2 / 5 / 2），按右删失计入分位。服务端 `/v1/chat/completions` 的 HTTP 400 增量也是 2 / 5 / 2。
+- 结果（`compare-*.md`，n=3，Δ 相对对照组；Δ/噪声 < 2× 的项不下结论）：
+  - **批 1 · w5-tail vs w5-control（c1/real）**：命中 0.9620 vs 0.9633（与 `estimate.md` 的预测逐位一致）；TTFT P50 +3.8%（3.1×），TTFT P95/P99、单轮 P50/P95/P99 全在噪声内（≤ 1.6×，|Δ| ≤ 1.2%）；驱逐 +2.7%（985k vs 959k）。**时间戳移到 messages 末尾后，timestamp 改写的代价（W3：命中 0.1059、单轮 P95 +7.7%、TTFT P95 +1078.7%）消失。**
+  - **批 2 · w5-c4-tail vs w5-c4（c4/real）**：命中 0.7688 vs 0.7467（1.0×）、驱逐 −8.2%（1.0×）、TTFT P95/P99、单轮各分位全在噪声内；只有 TTFT P50 −8.1%（2.2×）、wall −2.9%（3.7×）。**并发下 tail 与 identity 无可分辨差异**（负面结果，也是预期结果：tail 本来就不该有代价）。
+  - **批 2 · w5-c4-truncate vs w5-c4**：命中 0.8801 vs 0.7467（+17.9%，6.1×）；TTFT P50 −32.6%、**P95 −81.7%**（14259 → 2613 ms）、P99 −78.0%；单轮 P50 −50.8%、**P95 −29.5%**、P99 −25.5%；prompt tokens −29.2%（13.78M vs 19.47M）；驱逐 −63.4%（1.90M vs 5.18M）；wall −31.5%。全部 ≥ 6.1×。对比 W3（c1/compressed）truncate 命中 −5.5 点、单轮 P95 −7.1%：c4 下符号翻转，命中反而 +13 点。
+  - **批 3 · w5-c8-fcfs vs w5-c8-lpm（c8/real，只差 `--schedule-policy`）**：命中 0.1991 vs 0.5293（−62.4%，14×）；驱逐 15.90M vs 9.11M（+74.5%，n=2）；TTFT P50 **+285.1%**（4682 → 18027 ms）、P95 +39.7%（3.6×）、**P99 −73.4%**（249443 → 66417 ms，5.3×）；单轮 P50 +141.7%、P95 +3.4%（1.7×，噪声内）、**P99 −57.5%**；wall +16.7%；超时 0/0/0 vs 2/5/2（1.7×）。按 `requests.jsonl`：最大 TTFT fcfs 71 / 77 / 76 s，lpm 592 / 382 / 587 s；TTFT > 120 s 的请求 fcfs 0/0/0，lpm 16/11/15。回撤 fcfs 2/2/2，lpm 1/0/0。
+- lpm 的超时形态与 W4-c8 相同：三次都在同一条长轨迹 `20260918T114524` 上相邻两轮连续超时（turn 43–44、35–36、39–40），run 2 另有 3 个是不同轨迹的 turn 0。
+- fcfs 三次几乎逐位可复现：run 2 与 run 3 驱逐 15895056 vs 15895055、回撤输入 token 都是 71633、wall 相差 1 s。
+- 同组复跑一致性（replayer 版本不同，只作一致性检查，不同表）：w5-c4 命中 0.7467 ± 0.0217 vs w4-c4 0.7520 ± 0.0054；w5-c8-lpm 0.5293 vs w4-c8 0.5309，TTFT P95 36821 vs 37104 ms。w5-c4 这次噪声更大（命中 CV ~2.9%，TTFT P95 ± 1480 ms），批 2 里 tail 的「噪声内」判定部分受此影响。
+- 结论：
+  1. **头条 remedy 成立**：不是「别给模型时间」，是「别放在前缀里」。时间戳放 messages 末尾时，c1 下命中只差 0.0013、延迟全在噪声内；c4 下与 identity 无可分辨差异。
+  2. **LPM 饥饿回路（findings 7）有了对照支持**：换 fcfs 后 ≥ 600 s 的超时和成对超时都消失，TTFT 最大值从 ~590 s 降到 ≤ 77 s。代价是驱逐 +75%、命中 0.53 → 0.20、中位 TTFT ×3.9——一个真实的 trade-off，不是哪个策略全面更好。单轮 P95 两者在噪声内。饥饿发生在哪条轨迹上的机制解释仍是推断，数据只到超时分布与调度器计数器。
+  3. **并发下缩短上下文的收益被放大**：truncate 在 c1 下主要省 decode（单轮 P95 −7.1%，命中略降）；在 c4 下总 prompt 少 29%，驱逐少 63%，命中反升 13 点，TTFT P95 −82%。机制推断：KV 池（W4：78k token）能同时装下更多会话的前缀。这一组同时改变了负载本身（token 量），不是纯缓存效应，不能拿它的命中率去和 identity 讲「缓存更好」。

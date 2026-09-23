@@ -4,7 +4,7 @@
 
 Measures how a coding agent's **context-assembly strategy** on the harness side changes **prefix-cache and scheduling behaviour** on the LLM serving side. Real [pi](https://github.com/badlogic/pi-mono) coding sessions are recorded once against a cloud model, then replayed as load against a local SGLang instance under controlled concurrency, with radix-cache hits, TTFT, queue depth and tail latency collected per request.
 
-> A harness that writes the current time at the end of the system prompt drops the radix-cache hit rate from **0.9633 to 0.1059**, raises single-turn P95 latency by **7.7 %** and TTFT P95 by **1078.7 %** (507 → 5971 ms) at single concurrency; append-only assembly restores 0.9633. With four sessions in flight the same change costs **+36.7 %** on turn P95 and **+1046 %** on TTFT P50.
+> A harness that writes the current time at the end of the system prompt drops the radix-cache hit rate from **0.9633 to 0.1059**, raises single-turn P95 latency by **7.7 %** and TTFT P95 by **1078.7 %** (507 → 5971 ms) at single concurrency; append-only assembly restores 0.9633. With four sessions in flight the same change costs **+36.7 %** on turn P95 and **+1046 %** on TTFT P50. The fix is not to hide the clock from the model but to keep it out of the prefix: the same timestamp placed at the end of the messages gives 0.9620, and latency within noise of append-only except a 9 ms (+3.8 %) rise in TTFT P50 at one session; at four sessions every metric is within noise.
 
 All numbers: one RTX 4090 · SGLang 0.5.20 · Qwen3-8B-FP8 · 25 recorded trajectories (837 requests per replay) · every configuration replayed 3× with variance reported. Sources: [`experiments/*/report.md`](experiments) and [`docs/findings.md`](docs/findings.md).
 
@@ -41,6 +41,22 @@ All numbers: one RTX 4090 · SGLang 0.5.20 · Qwen3-8B-FP8 · 25 recorded trajec
 
 Timed-out requests are kept in the percentiles as right-censored lower bounds, not dropped ([decision](docs/decisions.md)). c=8 P99 has CV 14–17 %; everything else ≤ 4.8 %.
 
+### Follow-ups: the fix, truncation under load, and the scheduler (W5)
+
+Each W5 group is compared only with its own re-run control (replayer commit changed since W3/W4).
+
+| experiment (vs its control) | cache hit | TTFT P50 / P95 / P99 | turn latency P50 / P95 / P99 | evicted tokens / run | timeouts (≥ 600 s) |
+|---|---|---|---|---|---|
+| c=1 append-only | 0.9633 | 0.24 / 0.52 / 0.87 s | 2.4 / 23.0 / 40.1 s | 0.96 M | 0 |
+| c=1 timestamp at end of messages | 0.9620 | 0.25 / 0.52 / 0.86 s | 2.4 / 23.0 / 40.2 s | 0.98 M | 0 |
+| c=4 append-only | 0.7467 | 0.44 / 14.3 / 34.4 s | 6.1 / 38.3 / 65.1 s | 5.18 M | 0 |
+| c=4 timestamp at end of messages | 0.7688 | 0.41 / 13.7 / 29.8 s | 5.8 / 37.1 / 65.2 s | 4.75 M | 0 |
+| c=4 `truncate_tool_results` | **0.8801** | 0.30 / **2.6** / 7.6 s | 3.0 / **27.0** / 48.5 s | 1.90 M | 0 |
+| c=8 LPM scheduling | 0.5293 | 4.7 / 36.8 / 249 s | 10.6 / 68.2 / 251 s | 9.11 M | **2 / 5 / 2** |
+| c=8 FCFS scheduling | **0.1991** | **18.0** / 51.4 / **66.4** s | 25.6 / 70.5 / **107** s | **15.90 M** | 0 |
+
+At c=4 the timestamp-at-end group is within noise of append-only on every metric (Δ/noise ≤ 2.2×). c=1 control, c=8 LPM and c=8 FCFS eviction counts are from 2 of 3 runs (the counter is absent right after a cold start).
+
 ### What the data says that is not obvious
 
 Full write-up with sources in [`docs/findings.md`](docs/findings.md).
@@ -48,10 +64,10 @@ Full write-up with sources in [`docs/findings.md`](docs/findings.md).
 1. **Past the cache-fitting concurrency, more concurrency reduces throughput.** c=8 takes 16 % longer wall time than c=4 for the same 19.4 M prompt tokens, re-prefills 9.3 M evicted tokens and drops 11 requests.
 2. **Memory pressure is absorbed almost entirely by prefix eviction; retraction is rare.** At c=4 at most 4 of 837 requests per run are retracted (0 at c=1 and c=2); retracted input tokens are 0.3–1.6 % of evicted tokens. *(Corrected 2026-09-23: an earlier version said retraction never triggers — it read a gauge that resets every stats interval; see [decision](docs/decisions.md).)* Agent turns emit ~114 output tokens on ~21 k-token prompts, so the KV pool is full of *idle sessions' cached prefixes*, and the scheduler always has something to evict. At c ≥ 4, evicted tokens ≈ missed tokens: every eviction is a live session paying a cold prefill later.
 3. **Hit rate is a poor predictor of latency.** −5 points of hit rate came with −7 % turn P95 (truncation); −21 points came with +2488 % TTFT P95 (queueing); the next −65 points added only +38 %. Report miss *volume* and queue occupancy, not the hit percentage.
-4. **Truncating old tool results improves turn latency through faster decode, not cheaper prefill** — TTFT got worse (+37 %) while turn P95 got better (−7 %) with identical output lengths.
+4. **Truncating old tool results helps through decode at one session and through the cache at four.** At c=1 TTFT got worse (+37 %) while turn P95 got better (−7 %) with identical output lengths. At c=4 the sign flips: hit rate 0.747 → 0.880, evictions −63 %, TTFT P95 −82 %, turn P95 −30 % — the change also cuts prompt tokens by 29 %, so this is less work as well as better caching.
 5. **Run-to-run variance of the hit rate is itself a signal.** It is byte-identical across repeats at c=1 (std 0.0000) and drifts once eviction starts (0.0054 at c=4, 0.0155 at c=8).
 6. **Harness changes can be evaluated offline for single-tenant hit rate** — a chat-template-aware longest-common-prefix predicted the direction of all three transforms — **but not for their cost under concurrency**, which went from +7.7 % to +36.7 % on turn P95.
-7. *(mechanism inferred)* Under longest-prefix-match scheduling the starved requests are exactly the ones with the least cacheable prefix: a long session whose prefix was evicted during a tool call, and brand-new sessions — one 1675-token cold-start request waited more than 10 minutes.
+7. **Longest-prefix-match scheduling starves the requests with the least cacheable prefix; FCFS removes the starvation at the cost of the cache.** Under LPM at c=8, one long session times out on two consecutive turns in every run and the longest TTFT reaches 382–592 s; under FCFS there are no timeouts, the longest TTFT is ≤ 77 s and TTFT P99 drops 73 %, but the hit rate falls from 0.53 to 0.20, evictions rise 75 % and median TTFT is 3.9× higher. *(Why the evicted session lands at the back of the queue is inferred.)*
 8. *(inferred)* The cliff sits where `concurrent sessions × context length` exceeds the KV pool (78 k tokens here, ~25 k per session): fine at 2, broken at 4.
 
 ## What is in the repository
@@ -71,7 +87,7 @@ pi + extension/  ──record──▶  traces/*.jsonl  ──replay/──▶  
 | `replay/` | Replayer: trajectory → normalised payload sequence → replayed to an OpenAI-compatible endpoint at a chosen concurrency and timing mode; writes a self-describing artifact per run (config, fingerprint, plan, per-request log, metrics snapshots, summary). Includes the context transforms under test. |
 | `metrics/` | SGLang `/metrics` sampler. |
 | `analysis/` | Workload profile, variance/comparison reports (refuse to compare mismatched fingerprints or more than one changed variable — a changed SGLang launch flag counts as a variable), figures, and `estimate` — the GPU-free first gate: every request rendered through the served model's real chat template and tokenizer, hit rate = token-level longest common prefix with what the server has seen (calibrated to the measured runs within 0.0007 at c=1). |
-| `experiments/` | One directory per experiment: `config.yaml` + generated `report.md` / `compare-*.md` / `estimate.md`. Raw `out/` is not committed. `w5-*` are planned, not yet run. |
+| `experiments/` | One directory per experiment: `config.yaml` + generated `report.md` / `compare-*.md` / `estimate.md`. Raw `out/` is not committed. |
 | `scripts/` | Remote (AutoDL) setup, SGLang launch with fingerprinting, rsync, recording helpers. |
 | `docs/` | [`findings.md`](docs/findings.md) conclusions · [`experiments.md`](docs/experiments.md) run log incl. negative results · [`decisions.md`](docs/decisions.md) metric definitions and trade-offs · [`recording.md`](docs/recording.md) / [`remote.md`](docs/remote.md) runbooks · [`figures/`](docs/figures) |
 
@@ -107,13 +123,13 @@ bash scripts/sync.sh --pull w4-c4                 # artifacts → local
 just report w4-c4 && just compare w4-c4 w4-c1 && just plot
 ```
 
-Every artifact carries an environment fingerprint (GPU, driver, SGLang version and launch args, model checksum, pi version, replayer commit, trace checksums); reports refuse to put runs with different fingerprints in one table. Measured replay time across the 30 committed runs sums to ≈ 36 GPU-hours (`wall` rows in `experiments/*/report.md`), excluding setup, model load and warm-up.
+Every artifact carries an environment fingerprint (GPU, driver, SGLang version and launch args, model checksum, pi version, replayer commit, trace checksums); reports refuse to put runs with different fingerprints in one table. Measured replay time across the 54 committed runs sums to ≈ 56 GPU-hours (`wall` rows in `experiments/*/report.md`), excluding setup, model load and warm-up.
 
 ## Scope and limitations
 
 - One GPU, one model, one serving stack, one harness. Absolute numbers do not transfer; the qualitative findings depend on the workload shape (long prompts, short outputs, gaps between turns) and should, but that is untested.
 - Transform experiments (W3) use compressed timing, the concurrency sweep (W4) real timing; the two tables are never compared directly. At c=1 the two modes agree within 1.7 % on every percentile.
 - Task success is deliberately out of scope: the replay model is a small local model and only the token sequence and timing of the recorded sessions are reproduced.
-- Not done: c=3, a longer client timeout at c=8, FCFS-vs-LPM scheduling, KV-cache FP8. See [`docs/later.md`](docs/later.md).
+- Not done: c=3, a longer client timeout at c=8, KV-cache FP8. See [`docs/later.md`](docs/later.md).
 
 Working conventions for anyone (human or agent) contributing are in [CLAUDE.md](CLAUDE.md). License: [MIT](LICENSE).

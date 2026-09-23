@@ -1,8 +1,8 @@
 # 结论汇总
 
-W3 + W4 的结论合在一处。每个数字都能在 `experiments/*/report.md`、`compare-*.md` 或 `out/*/summary.json` 里找到；逐次实验的完整记录在 [experiments.md](experiments.md)，口径与取舍在 [decisions.md](decisions.md)。
+W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report.md`、`compare-*.md` 或 `out/*/summary.json` 里找到；逐次实验的完整记录在 [experiments.md](experiments.md)，口径与取舍在 [decisions.md](decisions.md)。
 
-环境（全部实验相同）：RTX 4090 24 GB 单卡 · SGLang 0.5.20（radix cache、`--schedule-policy lpm`、chunked-prefill 8192、KV 池 78384 token）· Qwen3-8B-FP8（YaRN×2 → 65536）· pi 0.85.1 录制的 25 条 coding-agent trajectory（837 请求/轮，prompt P50 21.5k token，输出 P50 114 token）· 每组配置重跑 3 次。
+环境（全部实验相同）：RTX 4090 24 GB 单卡 · SGLang 0.5.20（radix cache、`--schedule-policy lpm`、chunked-prefill 8192、KV 池 78384 token）· Qwen3-8B-FP8（YaRN×2 → 65536）· pi 0.85.1 录制的 25 条 coding-agent trajectory（837 请求/轮，prompt P50 21.5k token，输出 P50 114 token）· 每组配置重跑 3 次。W5 的 replayer 是 `8bc97bcf`（W3/W4 为更早的 commit），W5 数字只与 W5 自带的对照组同表；W5 批 3 的 fcfs 组唯一差异是 `--schedule-policy fcfs`。
 
 ## 头条
 
@@ -10,6 +10,8 @@ W3 + W4 的结论合在一处。每个数字都能在 `experiments/*/report.md`�
 > —— 单并发，`experiments/w3-timestamp/compare-w3-control.md`
 
 同一个改写在 4 条轨迹同飞时：命中率 0.7520 → 0.0981，单轮 P95 **+36.7%**，TTFT P50 **+1045.6%**（`experiments/w4-c4-timestamp/compare-w4-c4.md`）。
+
+修法不是「别给模型时间」，是「别放在前缀里」：同一条时间戳改放到 messages 末尾（每轮替换），c=1 下命中 0.9620 vs 0.9633，TTFT P50 +3.8%（+9 ms），TTFT P95/P99 与单轮各分位全在噪声内；c=4 下与 append-only 无可分辨差异（`experiments/w5-tail/compare-w5-control.md`、`experiments/w5-c4-tail/compare-w5-c4.md`）。
 
 ## 数据
 
@@ -40,6 +42,18 @@ W3 + W4 的结论合在一处。每个数字都能在 `experiments/*/report.md`�
 
 c=8 的分位含 11 个按右删失计入的超时请求（客户端 600 s 放弃，真实值更大；`decisions.md` 2026-09-21）。CV：c=8 的 P99 为 14–17%，其余 ≤ 4.8%。
 
+| W5 · real timing（对照组各自重跑） | cache hit | TTFT P50 / P95 / P99 (ms) | 单轮 P50 / P95 / P99 (ms) | 驱逐 tok/次 | 超时 | wall (s) |
+|---|---|---|---|---|---|---|
+| c=1 append-only（w5-control） | 0.9633 ± 0.0000 | 242 / 516 / 871 | 2372 / 22975 / 40124 | 0.96M | 0 | 4657 |
+| c=1 timestamp@messages 末尾（w5-tail） | 0.9620 ± 0.0000 | 251 / 522 / 862 | 2370 / 23002 / 40168 | 0.98M | 0 | 4666 |
+| c=4 append-only（w5-c4） | 0.7467 ± 0.0217 | 442 / 14259 / 34402 | 6108 / 38326 / 65084 | 5.18M | 0 | 2825 |
+| c=4 timestamp@messages 末尾（w5-c4-tail） | 0.7688 ± 0.0056 | 406 / 13714 / 29824 | 5807 / 37124 / 65174 | 4.75M | 0 | 2742 |
+| c=4 truncate_tool_results（w5-c4-truncate） | 0.8801 ± 0.0015 | 298 / **2613** / 7582 | 3003 / **27010** / 48520 | 1.90M | 0 | 1934 |
+| c=8 LPM（w5-c8-lpm） | 0.5293 ± 0.0235 | 4682 / 36821 / 249443 | 10591 / 68197 / 250964 | 9.11M | **2 / 5 / 2** | 3279 |
+| c=8 FCFS（w5-c8-fcfs） | **0.1991** ± 0.0013 | **18027** / 51428 / **66417** | 25595 / 70531 / **106697** | **15.90M** | 0 | 3826 |
+
+w5-control、w5-c8-lpm、w5-c8-fcfs 的驱逐量是 n=2（每组第 1 个 run 冷启动后计数器尚未出现，按缺失处理）。w5-c4 的命中率噪声（CV 2.9%）比 W4-c4 大，w5-c4-tail vs w5-c4 各项 Δ/噪声 ≤ 2.2×，按「噪声内无差异」记。
+
 ## 结论
 
 按「数据直接支持」到「数据一致但含推断」排序。
@@ -64,6 +78,8 @@ wall：c1 5958 s → c2 3175 → c4 2792 → **c8 3237**（+15.9%，6.4× 噪声
 
 truncate 的 TTFT P95 变差（+37.3%，前缀失配），但单轮 P95 变好（−7.1%）。输出长度按录制固定（`output_mode: recorded`），能解释这个剪刀差的只有更短的上下文让每个 decode step 更便宜（15k vs 22k token 的 attention）。「上下文管理」的收益主要落在长输出轮次的 decode 上，不是省 prefill。
 
+这是单并发下的结论。c=4 下同一个改写符号翻转：命中 0.7467 → **0.8801**（+13 点），驱逐 −63%，TTFT P95 **−81.7%**（14259 → 2613 ms），单轮 P95 −29.5%，全部 ≥ 6× 噪声（`experiments/w5-c4-truncate/compare-w5-c4.md`）。推断：prompt 总量少 29%，同样的 78k 池子能同时留住更多会话的前缀。这一组同时改变了负载本身，不能把它的命中率拿去说「缓存更好」——但过了悬崖之后，缩短上下文的收益大头落在 TTFT 上（P95 −82%，单轮 P95 −30%），不再只是 decode 变快；「少挤掉别人、少排队」是推断。
+
 ### 5. 命中率变得不可复现，本身就是过了悬崖的信号
 
 同配置同 seed 三次重跑，hit std：c1 0.0000、c2 0.0001、c4 0.0054、c8 0.0155。单并发下命中率是字节级确定的；一旦并发导致驱逐，命中率取决于各会话工具间隙到达的墙钟顺序。同配置下 hit rate 抖动，先查是不是在互相挤，再查 harness。
@@ -72,11 +88,13 @@ truncate 的 TTFT P95 变差（+37.3%，前缀失配），但单轮 P95 变好�
 
 W1 本地按 chat template 算的相邻请求共享前缀 P50 0.980，实测 c1 命中 0.9633；W3 三个 transform 的本地预估 0.110 / 0.110 / 0.983，实测 0.106 / 0.315 / 0.910，方向全对。但 timestamp 的真实代价从 c1 的单轮 P95 +7.7% 变成 c4 的 +36.7%，这一段只能上 GPU 测。tokenize + LCP 守第一道门；第二道门必须带并发。第一道门现在是 `just estimate`（真 chat template + 真 tokenizer）：c1 下四组实验的估计与实测差 ≤ 0.0007（tools_rotate 除外：实测 0.315 落在估计 0.108 与上界 0.866 之间），对 c4/c8 差 0.21/0.43——那正是并发的代价（`docs/decisions.md` 2026-09-21）。
 
-### 7. LPM 调度下有「富者愈富」的饥饿回路（机制含推断）
+### 7. LPM 调度下有「富者愈富」的饥饿回路；换 FCFS 能消除，代价是缓存（机制含推断）
 
 c8 的 11 个超时里 6 个在同一条 125 请求的长轨迹上**成对**出现（turn 34 等 600 s 超时，turn 35 紧接着再等 600 s），3 个是某个 run 的首请求，其中一条是 1675 token 的冷启动——理论上最便宜的请求等了 10 分钟以上。`num_requests_total` 差值（839 − 超时数）说明这些请求在服务端被干净 abort，不是泄漏。
 
-推断：8 条 20k+ 的会话总 footprint ≥ 160k，远超 78k 的池子，任何会话只要停下来做一次工具调用，回来时前缀已被驱逐；LPM 按匹配前缀长度排序，它于是排到所有热会话后面，排着队时前缀也不会刷新，下一轮依然最后。冷启动只有 1 例，方向性证据。后续实验见 `later.md`（`--schedule-policy fcfs` 对照）。
+推断：8 条 20k+ 的会话总 footprint ≥ 160k，远超 78k 的池子，任何会话只要停下来做一次工具调用，回来时前缀已被驱逐；LPM 按匹配前缀长度排序，它于是排到所有热会话后面，排着队时前缀也不会刷新，下一轮依然最后。冷启动只有 1 例，方向性证据。
+
+W5 对照（c=8，两组各自冷启动 server，只差 `--schedule-policy`；`experiments/w5-c8-fcfs/compare-w5-c8-lpm.md`）：lpm 复现了同一形态——三次都在同一条长轨迹上相邻两轮连续超时，共 2 / 5 / 2 个超时，TTFT > 120 s 的请求 16 / 11 / 15 个，最大 TTFT 592 / 382 / 587 s。fcfs 下超时 0，TTFT > 120 s 的请求 0，最大 TTFT 71 / 77 / 76 s，TTFT P99 −73.4%、单轮 P99 −57.5%。代价：命中 0.5293 → **0.1991**，驱逐 +74.5%，TTFT P50 ×3.9（4682 → 18027 ms），单轮 P50 +141.7%，wall +16.7%；单轮 P95 两者在噪声内。饥饿被去掉了，但中位请求慢了几倍——这是一个 trade-off，不是免费的修复。「长会话前缀被驱逐后排到最后」这一段机制仍是推断，数据只到超时分布与调度器计数器。
 
 ### 8. 悬崖位置 ≈ KV 池 / 单会话上下文，与算力无关（含推断）
 
@@ -87,4 +105,5 @@ c8 的 11 个超时里 6 个在同一条 125 请求的长轨迹上**成对**出�
 - 一张卡、一个模型、一个 serving 框架、一种 harness。数字不外推到其他配置；方向性结论（1–6）依赖的是负载形状（长 prompt、短输出、有间隙），应当可迁移，但未验证。
 - W3 用 compressed 时序、W4 用 real 时序，两组数字不同表。W4-c1 与 W3-control 各分位差 ≤ 1.7%，支持单并发下二者等价。
 - c8 的 P99 CV 14–17%，只下方向性结论。
+- W5 与 W3/W4 的 replayer commit 不同，不同表；复跑一致性：w5-c4 命中 0.7467 vs w4-c4 0.7520，w5-c8-lpm 0.5293 vs w4-c8 0.5309。
 - trace 未公开（含第三方仓库代码与模型输出），复现需自行录制；trace 的 sha256 与形状见 `experiments/profile/meta.json` 与 `profile.md`。
