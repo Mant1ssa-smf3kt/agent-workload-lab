@@ -194,7 +194,7 @@ timestamp 组的 prompt token 增量估计 +20,925，与实测 +20,925 逐 token
 
 **决定**：删除可选组 `experiments/w5-after-tools`（transform 代码里的 `position: after_tools` 与其单测保留）。W5 其余七个实验由 `scripts/run-w5.sh` 在远端一次性自动串行运行，不再逐批确认；批 1（`w5-control`、`w5-tail`）已由人于 2026-09-22 09:11 启动，脚本等它结束后接批 2、批 3，全部跑完自动 `shutdown`（AutoDL 关机脚本，停止计费）。
 
-**为什么砍 after_tools**：它的结果是一个可以从第一道门直接算出的比值——命中 ≈ 可缓存头部（system 文本 + tools 块）/ 当轮 prompt。`estimate.json` 的 per-trajectory 数据：头部为常数（本负载 1.6k 或 4.4k tok，对应两种 system prompt 长度；tools 块 25 条轨迹全部落在 545–817 tok），命中随平均 prompt 从 3k → 33k 单调由 0.449 降到 0.134，按桶 <8k 0.237、8–20k 0.145、≥20k 0.136。c1 下 W3 四组的估计与实测差 ≤ 0.0007，3.9 h 机时验证不出新信息。「头内部换位置救不回来」这个结论的前提是 tools 块 ≪ 历史；若 harness 的 tools 块达 10–30k tok（大量 MCP 工具），结论要重看——记入 findings 的适用边界，不用 GPU 证。
+**为什么砍 after_tools**：它的结果是一个可以从第一道门直接算出的比值——命中 ≈ 可缓存头部（system 文本 + tools 块）/ 当轮 prompt。`estimate.json` 的 per-trajectory 数据：头部为常数（本负载 1.6k 或 4.4k tok，对应两种 system prompt 长度；tools 块 25 条轨迹全部落在 545–817 tok），命中随平均 prompt 从 3k → 33k 单调由 0.449 降到 0.134，按桶 <8k 0.237、8–20k 0.145、≥20k 0.136。~~c1 下 W3 四组的估计与实测差 ≤ 0.0007~~（2026-09-23 更正：四组中三组差 ≤ 0.0007；tools_rotate 例外，估计 0.108、实测 0.315，落在估计与上界 0.866 之间，见 findings §6），3.9 h 机时验证不出新信息。「头内部换位置救不回来」这个结论的前提是 tools 块 ≪ 历史；若 harness 的 tools 块达 10–30k tok（大量 MCP 工具），结论要重看——记入 findings 的适用边界，不用 GPU 证。
 
 **批 3 的启动方式**：`w5-c8-lpm` 与 `w5-c8-fcfs` **各自冷启动 server**（先重启 lpm 跑 lpm 组，再重启 fcfs 跑 fcfs 组），而不是 lpm 组沿用批 1/2 的热 session——让 `--schedule-policy` 成为两组之间唯一差异，缓存起点也对称。批 2 沿用批 1 的 session（同 W3/W4 做法：一个 session 内连跑）。
 

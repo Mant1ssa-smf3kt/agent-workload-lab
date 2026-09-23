@@ -69,7 +69,7 @@
 
   - 方差：四组 cache hit 三次逐字节相同（std 为浮点误差，表里显示 ∞）；TTFT/latency 各分位 std ≤ 54 ms，CV ≤ 1%。所有对照 Δ/噪声 ≥ 5×，最小的是 truncate 的 TTFT P50（−4 ms，5.2×）。
   - timestamp vs control：hit −0.8574（−89.0%）；TTFT P50 +877.8%、**P95 +1078.7%**（507 → 5971 ms）、P99 +800.4%；latency P50 +135.9%、**P95 +7.7%**、P99 +4.5%；wall +43.1%。
-  - tools_rotate vs control：hit −0.6483（−67.3%）；TTFT P95 +1074%；latency P50 +122.7%、P95 +5.5%；wall +35.0%。
+  - tools_rotate vs control：hit −0.6483（−67.3%）；TTFT P95 ~~+1074%~~ +1075%（2026-09-23 更正舍入：`compare-w3-control.md` 为 +1074.7%）；latency P50 +122.7%、P95 +5.5%；wall +35.0%。
   - truncate vs control：hit −0.0531（−5.5%）；TTFT P95 +37.3%、P99 +18.1%；latency P50 −3.6%、P95 −7.1%；prompt tokens −29.2%；wall −4.6%。
 - 机制（`out/*/requests.jsonl`，run 1，按请求算 `res_cached_tokens`）：control 每请求命中 P50 22167 tok（prompt P50 22759）。timestamp 每请求命中 P50 3369、**最大 3723**——只剩 system prompt 里时间戳之前的那段，tools + 全部 messages 每轮从头 prefill，98% 请求命中率 < 0.5。tools_rotate 命中 P50 3752 但最大 21848：轮转周期对齐时整段前缀能命中，所以 0.315 > 0.106；59% 请求 < 0.5。truncate 命中 P50 13942 / prompt 15139，8% 请求 < 0.5——只有截断窗口滑过的那些轮次失配。
 - 结论：
