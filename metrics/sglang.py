@@ -118,7 +118,12 @@ KEY_METRICS = (
     "sglang:num_requests_total",
     "sglang:num_running_reqs",
     "sglang:num_queue_reqs",
+    # 注意：num_retracted_reqs 是 gauge，只记最近一个统计周期内的回撤数、上报后清零
+    # （sglang 0.5.20 scheduler_components/metrics_reporter.py），快照上几乎总是 0。
+    # 累计回撤数看下面两个 counter（docs/decisions.md 2026-09-23）。
     "sglang:num_retracted_reqs",
+    "sglang:num_retracted_requests_total",
+    "sglang:num_retracted_input_tokens_total",
     "sglang:num_used_tokens",
     "sglang:kv_used_tokens",
     "sglang:kv_evictable_tokens",
@@ -128,14 +133,21 @@ KEY_METRICS = (
 )
 
 
+# Labelled counters that prometheus_client only exports after their first increment: absent from
+# a snapshot that otherwise succeeded means 0, not missing. Kept to a verified list so a renamed
+# metric in another sglang version still reads as missing instead of a silent 0.
+LAZY_COUNTERS = frozenset({"sglang:num_retracted_requests_total", "sglang:num_retracted_input_tokens_total"})
+
+
 def key_metrics(flat: dict[str, float]) -> dict[str, float | None]:
     """Pick KEY_METRICS regardless of labels. Counters (``*_total``) are summed over all label
-    sets (SGLang splits e.g. prompt_tokens_total by is_streaming); gauges take the first match."""
+    sets (SGLang splits e.g. prompt_tokens_total by is_streaming); gauges take the first match.
+    An empty ``flat`` (snapshot failed) yields all None."""
     out: dict[str, float | None] = {}
     for name in KEY_METRICS:
         vals = [v for k, v in flat.items() if k == name or k.startswith(name + "{")]
         if not vals:
-            out[name] = None
+            out[name] = 0.0 if flat and name in LAZY_COUNTERS else None
         elif name.endswith("_total"):
             out[name] = sum(vals)
         else:

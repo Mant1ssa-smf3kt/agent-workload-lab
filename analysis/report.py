@@ -140,6 +140,8 @@ KEY_NUMBERS: tuple[tuple[str, tuple[str, ...], str, int], ...] = (
     ("requests", ("all", "n"), "", 0),
     ("errors", ("n_errors",), "", 0),
     ("timeouts (censored)", ("n_timeouts",), "", 0),
+    ("evicted tokens", ("server_delta", "evicted_tokens"), "", 0),
+    ("retracted requests", ("server_delta", "retracted_requests"), "", 0),
     ("wall", ("wall_s",), " s", 1),
 )
 
@@ -170,6 +172,9 @@ def fmt(v: float | None, unit: str, digits: int, lower_bound: bool = False) -> s
         return "—"
     return ("≥ " if lower_bound else "") + f"{v:.{digits}f}{unit}"
 
+
+# Δ / 噪声低于此值的指标，效应与噪声同量级，不得据此下结论（CLAUDE.md §9）
+MIN_EFFECT_OVER_NOISE = 2.0
 
 # std 低于均值的这个比例视为零噪声（同配置重跑得到逐字节相同的结果时只剩浮点累加误差）
 NOISE_FLOOR = 1e-9
@@ -349,6 +354,7 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
     L.append(f"| 指标 | {a_name} (n={len(a)}) | {b_name} (n={len(b)}) | Δ (A − B) | Δ / 噪声 |")
     L.append("|---|---|---|---|---|")
     any_bound = False
+    within_noise: list[str] = []
     for label, path, unit, digits in KEY_NUMBERS:
         sa = spread([dig(r.summary, path) for r in a])
         sb = spread([dig(r.summary, path) for r in b])
@@ -366,6 +372,8 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
             ratio = "∞（零噪声）" if delta else "—"
         else:
             ratio = f"{abs(delta) / noise:.1f}×"
+            if abs(delta) / noise < MIN_EFFECT_OVER_NOISE:
+                within_noise.append(label)
         ca = f"{fmt(sa.mean, unit, digits, la)} ± {fmt(sa.std, unit, digits)}"
         cb = f"{fmt(sb.mean, unit, digits, lb)} ± {fmt(sb.std, unit, digits)}"
         # 只有一侧是下界时 Δ 也是单侧界；两侧都是下界时 Δ 无界，不加符号
@@ -388,7 +396,15 @@ def render_compare(a_name: str, a: list[Run], b_name: str, b: list[Run]) -> str:
         notes.append("指纹不一致。")
     if len(diffs) > 1:
         notes.append("多于一个变量。")
-    L.append("**判定**：" + (" ".join(notes) if notes else "可下结论。"))
+    if notes:
+        L.append("**判定**：" + " ".join(notes))
+    elif within_noise:
+        L.append(
+            f"**判定**：可对照；但以下指标 Δ / 噪声 < {MIN_EFFECT_OVER_NOISE:g}×，与噪声同量级，"
+            "只能记为「在噪声范围内无差异」，不得据此下结论：" + "、".join(within_noise) + "。"
+        )
+    else:
+        L.append("**判定**：可下结论。")
     L.append("")
     return "\n".join(L)
 

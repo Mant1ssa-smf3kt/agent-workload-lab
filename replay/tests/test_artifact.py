@@ -123,6 +123,29 @@ def test_summary_with_metrics_and_no_usage() -> None:
         s["metrics_before"]["sglang:cache_hit_rate"] == 0.25
         and s["metrics_after"]["sglang:cache_hit_rate"] is None
     )
+    # failed "after" snapshot → every delta is missing, not 0
+    assert s["server_delta"] == {
+        "evicted_tokens": None,
+        "retracted_requests": None,
+        "retracted_input_tokens": None,
+    }
+
+
+def test_summary_server_delta() -> None:
+    stats = RunStats(started_epoch=0.0, finished_epoch=1.0)
+    stats.results = [sr("a", 0, 100, 90, 1.0)]
+    # session-cumulative counters; the retraction counter does not exist yet before the run
+    before = {"metrics": {"sglang:evicted_tokens_total{tp_rank=0}": 1000.0, "sglang:cache_hit_rate": 0.5}}
+    after = {
+        "metrics": {
+            "sglang:evicted_tokens_total{tp_rank=0}": 1600.0,
+            "sglang:num_retracted_requests_total{tp_rank=0}": 2.0,
+            "sglang:num_retracted_input_tokens_total{tp_rank=0}": 57606.0,
+            "sglang:num_retracted_reqs{tp_rank=0}": 0.0,
+        }
+    }
+    d = summarize(stats, Config(name="x"), before, after)["server_delta"]
+    assert d == {"evicted_tokens": 600.0, "retracted_requests": 2.0, "retracted_input_tokens": 57606.0}
 
 
 def test_plan_fingerprint_and_writer(tmp_path: Path) -> None:

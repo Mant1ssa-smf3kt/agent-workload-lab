@@ -205,6 +205,8 @@ def summarize(
         per_traj[tid] = _agg(
             [r for r in ok if r.trajectory == tid], [r for r in timed_out if r.trajectory == tid]
         )
+    km_before = key_metrics((metrics_before or {}).get("metrics", {}))
+    km_after = key_metrics((metrics_after or {}).get("metrics", {}))
     return {
         "name": cfg.name,
         "timing": cfg.replay.timing,
@@ -220,9 +222,28 @@ def summarize(
         "all": _agg(ok, timed_out),
         "excluding_synthetic": _agg(real, real_timed_out),
         "per_trajectory": per_traj,
-        "metrics_before": key_metrics((metrics_before or {}).get("metrics", {})),
-        "metrics_after": key_metrics((metrics_after or {}).get("metrics", {})),
+        "metrics_before": km_before,
+        "metrics_after": km_after,
+        "server_delta": server_delta(km_before, km_after),
     }
+
+
+# Server-side counters over the run = after − before. None when either snapshot lacks the value
+# (a failed snapshot is a missing value, CLAUDE.md §10). The server is not restarted between runs,
+# so the raw counters are cumulative over the session and only the difference belongs to this run.
+SERVER_DELTAS = {
+    "evicted_tokens": "sglang:evicted_tokens_total",
+    "retracted_requests": "sglang:num_retracted_requests_total",
+    "retracted_input_tokens": "sglang:num_retracted_input_tokens_total",
+}
+
+
+def server_delta(before: dict[str, float | None], after: dict[str, float | None]) -> dict[str, float | None]:
+    out: dict[str, float | None] = {}
+    for key, metric in SERVER_DELTAS.items():
+        b, a = before.get(metric), after.get(metric)
+        out[key] = None if a is None or b is None else a - b
+    return out
 
 
 class ArtifactWriter:

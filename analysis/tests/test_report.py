@@ -110,6 +110,9 @@ def test_variance_report_verdicts(tmp_path: Path) -> None:
 
     assert "没有完成的 run" in render_variance("x", [])
 
+    # runs summarized before server_delta existed show "—", not 0
+    assert "| retracted requests | — | — | — |" in md
+
 
 def test_variance_report_marks_censored_tail(tmp_path: Path) -> None:
     exp = tmp_path / "w4-c8"
@@ -206,6 +209,17 @@ def test_compare_report(tmp_path: Path) -> None:
     # Δ = A − B（实验组 − 对照组），百分比以对照组 B 为分母
     assert "| cache hit rate | 0.9100 ± 0.0100 | 0.5100 ± 0.0100 | 0.4000 (+78.4%) | 40.0× |" in md
     assert "| TTFT P95 | 510 ms ± 10 ms | 1510 ms ± 10 ms | -1000 ms (-66.2%) | 100.0× |" in md
+
+    # a structurally valid comparison whose effect is inside the noise must not read "可下结论"
+    n, m = tmp_path / "N", tmp_path / "M"
+    for i, (ha, hb) in enumerate(((0.773, 0.734), (0.770, 0.735), (0.762, 0.772))):
+        make_run(n, f"r{i}", hit=ha, ttft_p95=500 + i * 10)
+        make_run(m, f"r{i}", hit=hb, ttft_p95=500 + i * 10, config={"transform": {"name": "tail"}})
+    md = render_compare("N", load_runs(n), "M", load_runs(m))
+    verdict = md.split("**判定**")[1]
+    assert "可下结论" not in verdict and "可对照" in verdict and "cache hit rate" in verdict
+    assert "TTFT P95" in verdict  # Δ = 0 against nonzero noise is "no difference", listed too
+    assert "latency P50" not in verdict  # identical on every run → zero noise, "—"
 
     # identical reruns → std is float-rounding noise, must read as ∞ not 1e15×
     z, w = tmp_path / "Z", tmp_path / "W"

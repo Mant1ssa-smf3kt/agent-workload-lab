@@ -34,6 +34,12 @@ def test_parse_and_flatten() -> None:
     assert km["sglang:cache_hit_rate"] == 0.8125 and km["sglang:num_running_reqs"] == 3
     assert km["sglang:prompt_tokens_total"] == 123500.0  # counters summed over label sets
     assert km["sglang:gen_throughput"] is None
+    # retraction counters appear only after the first retraction: absent in a good snapshot = 0,
+    # absent because the snapshot failed = missing
+    assert km["sglang:num_retracted_requests_total"] == 0.0
+    assert key_metrics({})["sglang:num_retracted_requests_total"] is None
+    flat["sglang:num_retracted_requests_total{model_name=Qwen/Qwen3-8B-FP8}"] = 2.0
+    assert key_metrics(flat)["sglang:num_retracted_requests_total"] == 2.0
 
 
 @pytest.mark.asyncio

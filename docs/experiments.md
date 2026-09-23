@@ -100,9 +100,9 @@
   - **c4 vs c1**：hit −21.9%（0.9633 → 0.7520）；TTFT P50 +78.4%、**P95 +2488.5%**（506 → 13107 ms）、P99 +3153.4%；latency P50 +159.5%、**P95 +64.1%**、P99 +62.9%。全部 ≥ 23× 噪声。
   - c8 vs c4：hit −29.4%（→ 0.5309）；TTFT P50 +991.2%、P95 +183.1%、P99 +702.6%；latency P50 +73.1%、P95 +89.1%、P99 +257.0%（5.1–16×）。
   - **c4-timestamp vs c4**：hit −87.0%（0.7520 → 0.0981）；TTFT P50 +1045.6%、P95 +37.8%、P99 +64.6%；latency P50 +78.5%、**P95 +36.7%**（37269 → 50959 ms）、P99 +43.2%；wall +49.3%。全部 ≥ 8× 噪声。
-- c8 的 11 个超时（`out/*/requests.jsonl`，`res_error` = `ReadTimeout`，`res_ttfb_ms` 为空即服务端 600 s 内未发响应头）：6 个在同一条 125 请求的长轨迹（`20260918T114524`，turn 34–44，prompt 25.6–32.2k）上成对出现（超时后下一轮紧接着再超时）；另 5 个里 3 个是某个 run 的 `turn 0`，含一条冷启动请求（prompt 1675、录制 cache_read 0）。全部发生在各 run 的前 1600 s（8 条同飞阶段）。`sglang:num_retracted_reqs` 三次均为 0，`num_running_reqs` 最大 8、`num_queue_reqs` 最大 7。
+- c8 的 11 个超时（`out/*/requests.jsonl`，`res_error` = `ReadTimeout`，`res_ttfb_ms` 为空即服务端 600 s 内未发响应头）：6 个在同一条 125 请求的长轨迹（`20260918T114524`，turn 34–44，prompt 25.6–32.2k）上成对出现（超时后下一轮紧接着再超时）；另 5 个里 3 个是某个 run 的 `turn 0`，含一条冷启动请求（prompt 1675、录制 cache_read 0）。全部发生在各 run 的前 1600 s（8 条同飞阶段）。~~`sglang:num_retracted_reqs` 三次均为 0~~（2026-09-23 更正：该 gauge 每周期清零，不能用来数回撤；累计计数器 `num_retracted_requests_total` 显示三次分别回撤 1 / 2 / 0 个请求），`num_running_reqs` 最大 8、`num_queue_reqs` 最大 7。
 - 结论：
-  1. **多并发下的退化来自 radix 前缀驱逐 + 排队，不是回撤。** 五组 15 个 run `num_retracted_reqs` 全为 0——`w4-c8/config.yaml` 里「预期出现 retraction」**未发生**（负面结果）。命中率随并发下降（0.963 → 0.963 → 0.752 → 0.531）与驱逐量同步上升（1M → 1M → 5M → 9M tok/run），KV 池 78k token 装不下 4 条以上 20–50k 的上下文。
+  1. **多并发下的退化来自 radix 前缀驱逐 + 排队，不是回撤。** ~~五组 15 个 run `num_retracted_reqs` 全为 0——`w4-c8/config.yaml` 里「预期出现 retraction」**未发生**（负面结果）。~~（2026-09-23 更正：回撤发生过但罕见——c4 每 run 1/4/4、c4-timestamp 2/2/1、c8 1/2/0、c1/c2 为 0，被回撤输入 token 是驱逐量的 0.26–1.6%；本句的定性结论不变。见本文件 2026-09-23 条目与 `docs/decisions.md` 2026-09-23。）命中率随并发下降（0.963 → 0.963 → 0.752 → 0.531）与驱逐量同步上升（1M → 1M → 5M → 9M tok/run），KV 池 78k token 装不下 4 条以上 20–50k 的上下文。
   2. **悬崖在 c2 → c4**：c2 相对 c1 各项 ≤ 9%（队列非空 1.6%），c4 起 TTFT P95 跳 24×、队列有一半时间非空。c8 队列 80% 时间非空、最深 7，尾部出现 ≥ 600 s 的饥饿。
   3. **饥饿的形态**：超时集中在最长的那条轨迹与 run 首请求。LPM 调度按最长前缀匹配排序，前缀被驱逐的长请求与没有前缀的新请求排到最后，在 8 条同飞时可等超过 10 分钟（机制推断；数据只到调度器指标与超时分布）。
   4. **缓存失效的代价随并发放大**：timestamp 改写在 c4/real 下使单轮 P95 +36.7%（TTFT P95 +37.8%），而 W3 在 c1/compressed 下为 +7.7%（TTFT P95 +1078.7%）。两者时序模式不同不同表；但 W4-c1（real）与 W3-control（compressed）各分位差 ≤ 1.7%，支持 decisions 2026-09-19「单并发下两种时序数字一致」。单并发时失效只推高 TTFT、被 decode 摊薄；多并发时多出的 17.8M 驱逐 tok 的重 prefill 占住了 GPU，把所有人的尾延迟一起抬高。
@@ -116,3 +116,8 @@
   2. 23:28:13 脚本接着起 fcfs server，撞上正在加载的 lpm 进程（占 21.42 GiB），`torch.OutOfMemoryError` 退出。
   3. fcfs 等待循环里 `pgrep` 匹配到的是存活的 lpm 进程，所以没能判出 fcfs 已退出，空等 15 min 超时；随后 `stop_server` 杀掉 lpm，链路按设计关机。
 - 修复（`scripts/run-w5.sh`）：用 `$!` 记下自己起的 serve.sh 的 pid（`setsid` 不 fork，serve.sh 最后 `exec python`，pid 不变；已在远端用 `sleep` 模拟验证），用 `kill -0` 判活；启动前若仍有 sglang/serve.sh 进程则拒绝启动；启动超时先清理自己起的进程。新增 `ONLY_BATCH3=1`，跳过批 1、2 直接跑批 3。未在真卡上验证，补跑本身即验证。
+
+## 2026-09-23 · 更正 W4「回撤全为 0」
+- W4 结论 1 与 c8 超时分析里的「`num_retracted_reqs` 全为 0」读的是每周期清零的 gauge。按累计计数器 `num_retracted_requests_total`（`experiments/w4-*/report.md` 的 `retracted requests` 行）：w4-c1 0/0/0、w4-c2 0/0/0、w4-c4 1/4/4、w4-c4-timestamp 2/2/1、w4-c8 1/2/0。回撤输入 token 三次合计 c4 237k、c4-timestamp 141k、c8 79k，是同组驱逐 token 的 1.6% / 0.26% / 0.28%。baseline-c1/c3、W3 全部 run 为 0。
+- W5 已完成的 run：w5-c4-tail 第 3 次回撤 2 个请求，w5-c4-truncate 第 3 次回撤 1 个，其余为 0。
+- 定性结论「退化来自驱逐 + 排队」不变；「回撤从未发生」「预期的 retraction 未发生」撤回。口径见 `docs/decisions.md` 2026-09-23。

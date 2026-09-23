@@ -199,3 +199,14 @@ timestamp 组的 prompt token 增量估计 +20,925，与实测 +20,925 逐 token
 **批 3 的启动方式**：`w5-c8-lpm` 与 `w5-c8-fcfs` **各自冷启动 server**（先重启 lpm 跑 lpm 组，再重启 fcfs 跑 fcfs 组），而不是 lpm 组沿用批 1/2 的热 session——让 `--schedule-policy` 成为两组之间唯一差异，缓存起点也对称。批 2 沿用批 1 的 session（同 W3/W4 做法：一个 session 内连跑）。
 
 **影响**：CLAUDE.md §11 状态更新；§7「需要开卡的命令不得自动执行」对本次 W5 链视为已一次性确认。结果拉回后按批出 `report.md` / `compare-*.md`，写入 `docs/experiments.md`。
+
+## 2026-09-23 · 回撤按累计计数器计；compare 判定纳入 Δ / 噪声
+
+**决定**：
+1. 每个 run 的回撤数 = `sglang:num_retracted_requests_total` 的 run 后减 run 前，回撤输入 token 同理用 `sglang:num_retracted_input_tokens_total`，与驱逐 token 一起写进 `summary.json` 的 `server_delta`，`report.md` / `compare-*.md` 各加 `evicted tokens`、`retracted requests` 两行。`sglang:num_retracted_reqs` 保留采集，但不再用于判断「有没有回撤」。
+2. 这两个 counter 在第一次回撤之前不会出现在 /metrics 里：快照成功但没有这一项记为 0，快照失败记为缺失（`metrics/sglang.py` `LAZY_COUNTERS`，只收已核实的名字）。
+3. `just compare` 的判定：结构检查（≥ 3 次、指纹、单变量）都过、但有指标 Δ / 噪声 < 2× 时，不再写「可下结论」，而是列出这些指标，只能记为「在噪声范围内无差异」。
+
+**为什么**：sglang 0.5.20 的 `num_retracted_reqs` 是 gauge，只记最近一个统计周期的回撤数，上报后清零（`srt/managers/scheduler_components/metrics_reporter.py` 792–794 行）；run 末的快照几乎必然是 0。W4 的「15 个 run 回撤全为 0」就是从这个 gauge 读出来的，是错的：按 counter，w4-c4 三次回撤 1 / 4 / 4，w4-c4-timestamp 2 / 2 / 1，w4-c8 1 / 2 / 0，c1、c2 为 0；baseline、W3 全部为 0。回撤输入 token 是同组驱逐 token 的 0.26–1.6%，「压力主要由驱逐吸收」的定性结论不变，「回撤从未发生」撤回。判定一条：`w5-c4-tail` vs `w5-c4` 的命中率 Δ 只有 1.0× 噪声，旧判定仍写「可下结论」，容易被当成支持性证据。
+
+**影响**：W4、W5 批 1–2 共 30 个 run 用 `just resummarize` 重算（已有字段逐字节不变，只增 `server_delta`），W4 的 `report.md` / `compare-*.md` 重新生成；baseline、W3 未重算（回撤全为 0，报告里这两行显示「—」）。已更正 `docs/findings.md` §2、`README.md` / `README.zh-CN.md` 第 2 条、`docs/experiments.md` 2026-09-20/21 条目、CLAUDE.md §11。
