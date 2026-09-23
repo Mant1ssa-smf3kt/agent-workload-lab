@@ -108,3 +108,11 @@
   4. **缓存失效的代价随并发放大**：timestamp 改写在 c4/real 下使单轮 P95 +36.7%（TTFT P95 +37.8%），而 W3 在 c1/compressed 下为 +7.7%（TTFT P95 +1078.7%）。两者时序模式不同不同表；但 W4-c1（real）与 W3-control（compressed）各分位差 ≤ 1.7%，支持 decisions 2026-09-19「单并发下两种时序数字一致」。单并发时失效只推高 TTFT、被 decode 摊薄；多并发时多出的 17.8M 驱逐 tok 的重 prefill 占住了 GPU，把所有人的尾延迟一起抬高。
   5. 方差：c1/c2/c4/c4-timestamp 各分位 CV ≤ 4.8%（c2 TTFT P99 22% 例外）；c8 的 TTFT/latency P99 CV 14–17%，超时数 2/4/5 次，**c8 只下方向性结论**，其绝对分位数是删失下界与高噪声的组合。
 - 未做：c3（用户判断意义不大）、c8 调大 timeout 重跑（删失口径已给出下界）、hint 实验（CLAUDE.md §11 可砍项）。见 `docs/decisions.md` 2026-09-21。
+
+## 2026-09-22 · W5 自动链路（`scripts/run-w5.sh`）— 批 1、2 完成；批 3 因启动竞态未运行
+- 批 1（`w5-control`、`w5-tail`）与批 2（`w5-c4`、`w5-c4-tail`、`w5-c4-truncate`）各 3 次，15 个 run errors 全为 0（`batch-w5-{1,2}.log`）。`out/` 已于 2026-09-23 拉回本地；报告与对照待出，结论另起条目。
+- **批 3（`w5-c8-lpm`、`w5-c8-fcfs`）0 个 run。** 日志留档于 `experiments/w5-c8-lpm/out/failed-20260922-race/`（不入库；远端原件改名为 `*.failed-20260922.log`）。经过（`w5-chain.log` 与两份 serve 日志）：
+  1. 23:28:03 起 lpm server。`start_server` 10 s 后用 `pgrep "python -m sglang.launch_server"` 判活，但 `serve.sh` 在 `exec python` 前要先跑 `fingerprint.sh`（该次 python 首行日志在 23:28:22），于是被误判为「exited early」，其实 lpm server 仍在加载（23:28:50 ready）。
+  2. 23:28:13 脚本接着起 fcfs server，撞上正在加载的 lpm 进程（占 21.42 GiB），`torch.OutOfMemoryError` 退出。
+  3. fcfs 等待循环里 `pgrep` 匹配到的是存活的 lpm 进程，所以没能判出 fcfs 已退出，空等 15 min 超时；随后 `stop_server` 杀掉 lpm，链路按设计关机。
+- 修复（`scripts/run-w5.sh`）：用 `$!` 记下自己起的 serve.sh 的 pid（`setsid` 不 fork，serve.sh 最后 `exec python`，pid 不变；已在远端用 `sleep` 模拟验证），用 `kill -0` 判活；启动前若仍有 sglang/serve.sh 进程则拒绝启动；启动超时先清理自己起的进程。新增 `ONLY_BATCH3=1`，跳过批 1、2 直接跑批 3。未在真卡上验证，补跑本身即验证。
