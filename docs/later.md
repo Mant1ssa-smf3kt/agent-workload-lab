@@ -1,6 +1,6 @@
 # later.md
 
-工作时段冒出来的、与当前实验不直接相关的东西，记这里，不展开（CLAUDE.md §12）。做完的条目删掉，不留「已完成」。
+与当前实验不直接相关、以后可能做的东西，记这里。做完的条目删掉，不留「已完成」。
 
 - pi `compat.sendSessionAffinityHeaders`：openai-completions 下可按 session id 发亲和性头。若日后做 hint / 会话亲和调度实验，这是 harness 侧现成的挂点，不用改 pi。W4 已决定不做 hint 实验（decisions 2026-09-21）。
 - zai `clear_thinking: false` 会把 `reasoning_content` 写回历史 assistant 消息。Qwen3 chat template 对历史 `reasoning_content` 的渲染规则未单独验证；本项目全部 trace 为 thinking off，不受影响。

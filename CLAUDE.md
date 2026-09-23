@@ -125,7 +125,7 @@ just replay EXP               # 正式重放，落盘 artifact
 2. **录制好的 trajectory 是只读的。** 任何清洗、过滤、裁剪都必须产生新文件并在 config 里记录来源与处理方式，不得原地修改。
 3. **版本锁死。** pi、SGLang、模型权重、replayer 自身的 commit，全部写进每次实验的环境指纹。跨版本的数字不得放进同一张对比表。
 4. **不得编造数字。** 报告、README、注释里出现的每个数字，都必须能在某个 `experiments/*/out/` 的 artifact 里找到来源。没跑出来就写 TBD，不要填占位值，也不要用「大约」「预计」蒙混。
-5. **不得 push 到远程仓库**，不得创建 PR。本地提交即可。
+5. **只在人明确要求时 push**（`origin/master`；仓库公开）。push 前检查待推送的提交不含 `traces/`、`experiments/*/out/`、`scripts/remote.env` 与任何密钥或远端地址。不得创建 PR。
 6. **改 pi 源码前先停下来问。** 优先用 extension、provider、环境变量解决；确实需要改内部时，先说明改哪两处、为什么 extension 做不到。
 
 ---
@@ -161,11 +161,3 @@ just replay EXP               # 正式重放，落盘 artifact
 **W5（2026-09-22/23，已完成、实例已关）**：`experiments/w5-*` 三批各 3 次（`docs/experiments.md` 2026-09-23，`docs/findings.md`）。批 1 头条 remedy：时间戳移到 messages 末尾，`w5-tail` 命中 0.9620 vs `w5-control` 0.9633（与 `just estimate` 一致），延迟除 TTFT P50 +3.8% 外在噪声内。批 2：c4 下 tail 与 identity 噪声内无差异；truncate 命中 0.7467 → 0.8801、TTFT P95 −81.7%。批 3：fcfs 消除 lpm 的超时（0 vs 2/5/2），代价是命中 0.5293 → 0.1991、TTFT P50 +285.1%。W5 的 replayer 为 `8bc97bcf`，只与 W5 自带对照组同表。任何 harness 侧改写先过 `just estimate`。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。
-
----
-
-## 12. 学习边界
-
-**任何知识点，如果不是当前实验卡住的直接原因，就不学。** 冒出来的好奇心一律记进 `docs/later.md`，不要在工作时段展开。
-
-agent 在回答问题时同样遵守这条：不要主动展开与当前任务无关的原理讲解。
