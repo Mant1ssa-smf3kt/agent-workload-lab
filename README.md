@@ -8,6 +8,19 @@ Measures how a coding agent's **context-assembly strategy** on the harness side 
 
 All numbers: one RTX 4090 · SGLang 0.5.20 · Qwen3-8B-FP8 · 25 recorded trajectories (837 requests per replay) · every configuration replayed 3× with variance reported. Sources: [`experiments/*/report.md`](experiments) and [`docs/findings.md`](docs/findings.md).
 
+## Why this repository matters
+
+That dynamic content in the system prompt breaks prefix caching is not news — every prompt-caching guide says to put static content first. What this repository adds is **what it costs under load, and why**:
+
+- **Cache cost depends on concurrency; single-session benchmarks underestimate it.** The same timestamp costs +7.7 % turn P95 with one session in flight and +36.7 % with four. The fix is free.
+- **For agent workloads the KV pool is a session cache, and past its capacity more concurrency means less throughput.** Retraction is rare; pressure is absorbed by evicting idle sessions' prefixes. The cliff sits between 2 and 4 sessions, consistent with `sessions × context ≈ KV pool` (78 k tokens here). c=8 takes 16 % longer than c=4 for the same work, and 11 requests time out across its three runs. Capacity planning should be admission control by that product, not by compute.
+- **Hit rate is a poor latency signal, and the same harness change can flip sign under load.** Truncating old tool results is a decode win at c=1 (hit rate slightly down) and a cache win at c=4 (hit 0.747 → 0.880, TTFT P95 −82 %). Context-management strategies have to be evaluated with concurrency.
+- **The scheduler choice is a real trade-off, not a free fix.** Longest-prefix-match starves long sessions (repeated ≥ 600 s timeouts at c=8); FCFS removes the starvation (max TTFT ≤ 77 s) at the cost of hit rate 0.53 → 0.20 and 3.9× median TTFT.
+
+Reusable beyond these numbers: a record → replay pipeline for real agent sessions with per-run environment fingerprints; a GPU-free first gate (`just estimate`, real chat template + tokenizer) that matches measured single-session hit rate within 0.0007; comparison reports that refuse mismatched fingerprints or more than one changed variable, report Δ/noise, and keep timed-out requests as right-censored percentiles. Negative results and corrections are kept in [`docs/experiments.md`](docs/experiments.md).
+
+Scope: one GPU, one 8B model, one serving stack, one harness, 25 trajectories. Absolute numbers do not transfer; the qualitative findings depend on the workload shape (long prompts, short outputs, gaps between turns). Mechanisms marked *inferred* in [`docs/findings.md`](docs/findings.md) are consistent with the data but not directly observed.
+
 ## Results
 
 ### Context transforms at single concurrency (W3)
