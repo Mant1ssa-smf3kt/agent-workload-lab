@@ -1,6 +1,6 @@
 # 结论汇总
 
-W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report.md`、`compare-*.md` 或 `out/*/summary.json` 里找到；逐次实验的完整记录在 [experiments.md](experiments.md)，口径与取舍在 [decisions.md](decisions.md)。
+W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report.md`、`compare-*.md` 或 `out/*/` 下的原始文件（`summary.json`、`requests.jsonl`、`metrics_before/after.json`、`metrics_samples.jsonl`）里找到；逐次实验的完整记录在 [experiments.md](experiments.md)，口径与取舍在 [decisions.md](decisions.md)。
 
 环境（全部实验相同）：RTX 4090 24 GB 单卡 · SGLang 0.5.20（radix cache、`--schedule-policy lpm`、chunked-prefill 8192、KV 池 78384 token）· Qwen3-8B-FP8（YaRN×2 → 65536）· pi 0.85.1 录制的 25 条 coding-agent trajectory（837 请求/轮，prompt P50 21.5k token，输出 P50 114 token）· 每组配置重跑 3 次。W5 的 replayer 是 `8bc97bcf`（W3/W4 为更早的 commit），W5 数字只与 W5 自带的对照组同表；W5 批 3 的 fcfs 组唯一差异是 `--schedule-policy fcfs`。
 
@@ -11,7 +11,7 @@ W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report
 
 同一个改写在 4 条轨迹同飞时：命中率 0.7520 → 0.0981，单轮 P95 **+36.7%**，TTFT P50 **+1045.6%**（`experiments/w4-c4-timestamp/compare-w4-c4.md`）。
 
-修法不是「别给模型时间」，是「别放在前缀里」：同一条时间戳改放到 messages 末尾（每轮替换），c=1 下命中 0.9620 vs 0.9633，TTFT P50 +3.8%（+9 ms），TTFT P95/P99 与单轮各分位全在噪声内；c=4 下与 append-only 无可分辨差异（`experiments/w5-tail/compare-w5-control.md`、`experiments/w5-c4-tail/compare-w5-c4.md`）。
+修法不是「别给模型时间」，是「别放在前缀里」：同一条时间戳改放到 messages 末尾（每轮替换），c=1 下命中 0.9620 vs 0.9633，TTFT P50 +3.8%（+9 ms），TTFT P95/P99 与单轮各分位全在噪声内；c=4 下没有任何一项变差：命中率、驱逐量、TTFT P95/P99 与单轮各分位在噪声内，TTFT P50 −8.1%（2.2×）、wall −2.9%（3.7×）（`experiments/w5-tail/compare-w5-control.md`、`experiments/w5-c4-tail/compare-w5-c4.md`）。
 
 ## 数据
 
@@ -40,7 +40,7 @@ W3、W4、W5 的结论合在一处。每个数字都能在 `experiments/*/report
 | c=8 | 0.5309 ± 0.0155 | 4674 / 37104 / 223480 | 10561 / 70486 / 231259 | 9.3M | 82% | **11** | **3237** |
 | c=4 + system_timestamp | **0.0981** ± 0.0002 | 4907 / 18061 / 45842 | 10891 / 50959 / 92756 | **17.8M** | 52% | 0 | 4167 |
 
-c=8 的分位含 11 个按右删失计入的超时请求（客户端 600 s 放弃，真实值更大；`decisions.md` 2026-09-21）。CV：c=2 的 TTFT P99 为 22%，c=8 的 TTFT P50/P95 为 6–9%、P99 为 14–17%，其余 ≤ 4.8%。
+c=8 的分位含 11 个按右删失计入的超时请求（客户端 600 s 放弃，真实值更大；`decisions.md` 2026-09-21）。「队列非空」= `out/*/metrics_samples.jsonl` 里 `sglang:num_queue_reqs` > 0 的采样占比，取三次均值。CV：c=2 的 TTFT P99 为 22%，c=8 的 TTFT P50/P95 为 6–9%、P99 为 14–17%，其余 ≤ 4.8%。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/w5-followups-dark.png">
@@ -57,7 +57,7 @@ c=8 的分位含 11 个按右删失计入的超时请求（客户端 600 s 放�
 | c=8 LPM（w5-c8-lpm） | 0.5293 ± 0.0235 | 4682 / 36821 / 249443 | 10591 / 68197 / 250964 | 9.11M | **2 / 5 / 2** | 3279 |
 | c=8 FCFS（w5-c8-fcfs） | **0.1991** ± 0.0013 | **18027** / 51428 / **66417** | 25595 / 70531 / **106697** | **15.90M** | 0 | 3826 |
 
-w5-control、w5-c8-lpm、w5-c8-fcfs 的驱逐量是 n=2（每组第 1 个 run 冷启动后计数器尚未出现，按缺失处理）。w5-c4 的命中率噪声（CV 2.9%）比 W4-c4 大，w5-c4-tail vs w5-c4 各项 Δ/噪声 ≤ 2.2×，按「噪声内无差异」记。
+w5-control、w5-c8-lpm、w5-c8-fcfs 的驱逐量是 n=2（每组第 1 个 run 冷启动后计数器尚未出现，按缺失处理）。w5-c4 的命中率噪声（CV 2.9%）比 W4-c4 大，w5-c4-tail vs w5-c4 除 TTFT P50（−8.1%，2.2×）与 wall（−2.9%，3.7×）外各项 Δ/噪声 < 2×，按「噪声内无差异」记；这两项都是 tail 更好。（2026-09-28 更正：旧版写「各项 Δ/噪声 ≤ 2.2×，按噪声内无差异记」，与 < 2× 的判定口径不符；`compare-w5-c4.md` 的判定本来就没有把这两项列为噪声内。）
 
 ## 结论
 
@@ -65,7 +65,7 @@ w5-control、w5-c8-lpm、w5-c8-fcfs 的驱逐量是 n=2（每组第 1 个 run �
 
 ### 1. 过了缓存容量之后，加并发让吞吐倒退
 
-wall：c1 5958 s → c2 3175 → c4 2792 → **c8 3237**（+15.9%，6.4× 噪声）。同样 19.4M prompt token，c8 每次比 c4 多花 16% 墙钟，每次要重复 prefill 9.3M 被驱逐的 token（c4 为 5.1M）；三次重跑共 11 个请求超时。普通 LLM serving 的直觉是「并发加到算力饱和为止」；agent 负载的吞吐最优并发是**缓存装得下的并发**，过线后每个指标都变差。c8 的 wall 含超时等待，但把 timeout 调大只会等更久，方向不变。
+wall：c1 5958 s → c2 3175 → c4 2792 → **c8 3237**（+15.9%，6.4× 噪声）。同样 25 条轨迹，c8 每次比 c4 多花 16% 墙钟，每次要重复 prefill 9.3M 被驱逐的 token（c4 为 5.1M）；三次重跑共 11 个请求超时。普通 LLM serving 的直觉是「并发加到算力饱和为止」；agent 负载的吞吐最优并发是**缓存装得下的并发**，过线后每个指标都变差。c8 的 wall 含超时等待，但把 timeout 调大只会等更久，方向不变。
 
 ### 2. 压力几乎全部由驱逐吸收，回撤罕见
 

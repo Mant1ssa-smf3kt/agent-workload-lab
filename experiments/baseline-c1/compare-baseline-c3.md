@@ -17,7 +17,9 @@
 | requests | 171 ± 0 | 171 ± 0 | 0 (+0.0%) | — |
 | errors | 0 ± 0 | 0 ± 0 | 0 | — |
 | timeouts (censored) | — | — | — | — |
+| evicted tokens | — | — | — | — |
+| retracted requests | — | — | — | — |
 | wall | 1260.1 s ± 10.4 s | 845.0 s ± 0.2 s | 415.0 s (+49.1%) | 40.0× |
 
 Δ = baseline-c1 − baseline-c3（实验组 − 对照组），百分比相对对照组。Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。
-**判定**：可下结论。
+**判定**：可对照；但以下指标 Δ / 噪声 < 2×，与噪声同量级，只能记为「在噪声范围内无差异」，不得据此下结论：cache hit rate、cache hit rate (excl. synthetic)、TTFT P95、TTFT P99、latency P95。

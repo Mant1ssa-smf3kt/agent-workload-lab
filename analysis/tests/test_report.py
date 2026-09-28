@@ -236,7 +236,7 @@ def test_compare_report(tmp_path: Path) -> None:
     md = render_compare("A", load_runs(a), "C", load_runs(c))
     assert "动了 2 个变量" in md and "多于一个变量" in md and "不足 3 次" in md
 
-    # fingerprint mismatch → refused
+    # fingerprint mismatch → invalid
     d = tmp_path / "D"
     make_run(d, "r0", hit=0.5, ttft_p95=1, gpu="RTX 5090")
     md = render_compare("A", load_runs(a), "D", load_runs(d))

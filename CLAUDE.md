@@ -62,7 +62,7 @@ docs/           findings.md 结论汇总、experiments.md 实验日志、decisio
 |---|---|
 | **trajectory** | 一个完整 agent 会话的请求序列。含每轮的完整 prompt、工具调用与输出、轮间时间间隔、输出长度。录制后**只读**。 |
 | **replay** | 把 trajectory 作为负载重放到本地推理服务。只保真 token 序列与时序，不保真模型行为。 |
-| **保真模式** | `timing=real` 按原始轮间隔重放；`timing=compressed` 去掉工具执行空窗，压力测试用。两种模式的数字不可互相比较。 |
+| **保真模式** | `timing=real` 按原始轮间隔重放（单个间隔按 `max_gap_s` 封顶）；`timing=compressed` 去掉全部请求间隔（工具执行与思考时间），上一个请求结束立即发下一个。两种模式的数字不可互相比较。 |
 | **实验** | 一次 `experiments/<name>/` 下的完整运行，必须自带 config、artifact、环境指纹三件套。 |
 
 ---
@@ -158,6 +158,6 @@ just replay EXP               # 正式重放，落盘 artifact
 
 当前状态：**W1–W4 实验全部完成；结论汇总在 `docs/findings.md`，README 已重写为结果优先。** W1：25 条 trajectory（`docs/recording-tasks.md` + `scripts/record_batch.py` 自动录制）、画像表 `experiments/profile/`。W2：AutoDL 4090 + sglang 0.5.20 跑通，baseline-c1/c3 各三次方差成立（`experiments/baseline-c*/report.md`）。W3：四组各三次跑完（`experiments/w3-*/report.md`、`compare-w3-control.md`），头条数字已填（`docs/decisions.md` 2026-09-20）：timestamp 改写使命中率 0.9633 → 0.1059，单轮 P95 +7.7%，TTFT P95 +1078.7%；append-only 为 0.9633。W4：`w4-c{1,2,4,8}` 并发扫描 + `w4-c4-timestamp` 各三次（`experiments/w4-*/report.md`、`compare-*.md`，`docs/experiments.md` 2026-09-21）：悬崖在 c2→c4（命中 0.963 → 0.752，TTFT P95 506 → 13107 ms），c8 命中 0.531、11 个请求排队 ≥ 600 s 超时（按右删失计入），回撤罕见（c4 每 run ≤ 4 次、c1/c2 为 0，按累计计数器；2026-09-23 更正了「全为 0」）；timestamp 改写在 c4 下单轮 P95 +36.7%（c1 下为 +7.7%）。不补 c3、不做 hint 实验（`docs/decisions.md` 2026-09-21）。
 
-**W5（2026-09-22/23，已完成、实例已关）**：`experiments/w5-*` 三批各 3 次（`docs/experiments.md` 2026-09-23，`docs/findings.md`）。批 1 头条 remedy：时间戳移到 messages 末尾，`w5-tail` 命中 0.9620 vs `w5-control` 0.9633（与 `just estimate` 一致），延迟除 TTFT P50 +3.8% 外在噪声内。批 2：c4 下 tail 与 identity 噪声内无差异；truncate 命中 0.7467 → 0.8801、TTFT P95 −81.7%。批 3：fcfs 消除 lpm 的超时（0 vs 2/5/2），代价是命中 0.5293 → 0.1991、TTFT P50 +285.1%。W5 的 replayer 为 `8bc97bcf`，只与 W5 自带对照组同表。任何 harness 侧改写先过 `just estimate`。
+**W5（2026-09-22/23，已完成、实例已关）**：`experiments/w5-*` 三批各 3 次（`docs/experiments.md` 2026-09-23，`docs/findings.md`）。批 1 头条 remedy：时间戳移到 messages 末尾，`w5-tail` 命中 0.9620 vs `w5-control` 0.9633（与 `just estimate` 一致），延迟除 TTFT P50 +3.8% 外在噪声内。批 2：c4 下 tail 没有任何一项比 identity 差（TTFT P50 −8.1%、wall −2.9%，其余在噪声内）；truncate 命中 0.7467 → 0.8801、TTFT P95 −81.7%。批 3：fcfs 消除 lpm 的超时（0 vs 2/5/2），代价是命中 0.5293 → 0.1991、TTFT P50 +285.1%。W5 的 replayer 为 `8bc97bcf`，只与 W5 自带对照组同表。任何 harness 侧改写先过 `just estimate`。
 
 > W3 的结论是本项目的核心，不可裁剪。时间紧张时优先砍 W4 的 hint 实验。

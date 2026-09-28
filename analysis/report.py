@@ -6,8 +6,9 @@ Two jobs, both enforcing CLAUDE.md §9:
    shows each run's key numbers and the spread across runs. Fewer than 3 runs, or runs whose
    fingerprints disagree (GPU / sglang / model / replayer commit), and the verdict says so.
 2. **Compare** — ``--against OTHER`` puts two experiments side by side: EXP is the treatment,
-   OTHER the control, so Δ = EXP − OTHER and the percentage is relative to OTHER. Refused when
-   their fingerprints differ (§8.3) and flagged when they differ in more than one variable. A
+   OTHER the control, so Δ = EXP − OTHER and the percentage is relative to OTHER. The table is
+   always written; the verdict marks it invalid when their fingerprints differ (§8.3) or they
+   differ in more than one variable. A
    variable is a config key *or* a server launch flag (``serve.serve_args`` in the fingerprint):
    ``--schedule-policy fcfs`` vs ``lpm`` with byte-identical configs is one variable, not a rerun.
 

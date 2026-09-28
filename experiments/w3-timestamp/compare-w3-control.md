@@ -17,6 +17,8 @@
 | requests | 837 ± 0 | 837 ± 0 | 0 (+0.0%) | — |
 | errors | 0 ± 0 | 0 ± 0 | 0 | — |
 | timeouts (censored) | — | — | — | — |
+| evicted tokens | — | — | — | — |
+| retracted requests | — | — | — | — |
 | wall | 6615.0 s ± 0.8 s | 4623.6 s ± 2.5 s | 1991.3 s (+43.1%) | 796.3× |
 
 Δ = w3-timestamp − w3-control（实验组 − 对照组），百分比相对对照组。Δ / 噪声 = |Δ| / max(std_A, std_B)。小于 ~2× 时效应与噪声同量级，结论作废（CLAUDE.md §9）。
